@@ -1,0 +1,197 @@
+/* === FONTS === */
+.font-display { font-family: 'Inter', sans-serif; }
+.font-geist { font-family: 'Geist', sans-serif; }
+
+/* === SCROLLBAR === */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+/* === SIDEBAR NAV === */
+.nav-btn {
+  color: rgba(255,255,255,0.45);
+}
+.nav-btn:hover {
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.8);
+}
+.nav-btn.active {
+  background: rgba(0,219,233,0.08);
+  color: #00dbe9;
+  box-shadow: inset 0 0 0 1px rgba(0,219,233,0.15);
+}
+
+/* === SONG CARDS === */
+.song-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 1rem;
+  overflow: hidden;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+.song-card:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+}
+.song-card .play-overlay {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.song-card:hover .play-overlay {
+  opacity: 1;
+}
+.song-card.playing {
+  border-color: rgba(0,219,233,0.3);
+  box-shadow: 0 0 20px rgba(0,219,233,0.08);
+}
+
+/* === GLASS EFFECT === */
+.glass {
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* === PLAYLIST CARD === */
+.playlist-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 1rem;
+  overflow: hidden;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+.playlist-card:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+}
+
+/* === FAVORITE ROW === */
+.fav-row {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.fav-row:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.1);
+}
+
+/* === CUSTOM RANGE SLIDERS === */
+input[type="range"].volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0,219,233,0.3);
+}
+input[type="range"].volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  border: none;
+  cursor: pointer;
+}
+
+input[type="range"].opacity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #00dbe9;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0,219,233,0.4);
+}
+input[type="range"].opacity-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #00dbe9;
+  border: none;
+  cursor: pointer;
+}
+
+input[type="range"].opacity-slider::-webkit-slider-runnable-track,
+input[type="range"].volume-slider::-webkit-slider-runnable-track {
+  height: 100%;
+  border-radius: 99px;
+}
+
+/* === PARTICLES BUTTON === */
+.particle-btn {
+  border-color: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.04);
+}
+.particle-btn:hover {
+  border-color: rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.8);
+}
+.particle-btn.active {
+  border-color: rgba(0,219,233,0.3);
+  color: #00dbe9;
+  background: rgba(0,219,233,0.08);
+}
+
+/* === TAG/CHIP === */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 99px;
+  font-size: 0.625rem;
+  font-family: 'Geist', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.4);
+}
+
+/* === TOAST ANIMATION === */
+.toast-show {
+  scale: 1;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* === NEON GLOW ANIMATION === */
+@keyframes neon-pulse {
+  0%, 100% { box-shadow: 0 0 5px rgba(0,219,233,0.1); }
+  50% { box-shadow: 0 0 20px rgba(0,219,233,0.2); }
+}
+.playing {
+  animation: neon-pulse 2s ease-in-out infinite;
+}
+
+/* === FADE TRANSITIONS === */
+.view {
+  animation: fadeIn 0.25s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 768px) {
+  #player-bar {
+    padding: 0.625rem 0.75rem;
+  }
+}

@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  rinne-db:
+    image: postgres:15-alpine
+    container_name: rinne-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: rinne
+      POSTGRES_USER: rinne_user
+      POSTGRES_PASSWORD: rinne_secret_2026
+    volumes:
+      - rinne_pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rinne_user -d rinne"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rinne_pgdata:
