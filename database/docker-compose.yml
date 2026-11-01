@@ -6,16 +6,16 @@ services:
     container_name: rinne-postgres
     restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     environment:
-      POSTGRES_DB: rinne
-      POSTGRES_USER: rinne_user
-      POSTGRES_PASSWORD: rinne_secret_2026
+      POSTGRES_DB: ${POSTGRES_DB:-rinne}
+      POSTGRES_USER: ${POSTGRES_USER:-rinne_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD es obligatoria}
     volumes:
       - rinne_pgdata:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rinne_user -d rinne"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5

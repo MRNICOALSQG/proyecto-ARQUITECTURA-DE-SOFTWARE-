@@ -1,6 +1,4 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
+import { env } from './config/env';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -16,10 +14,10 @@ import favoritesRoutes from './routes/favorites.routes';
 import uploadRoutes from './routes/upload.routes';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = env.PORT;
 
 // Ensure uploads directory exists
-const uploadDir = process.env.UPLOAD_DIR || './uploads';
+const uploadDir = env.UPLOAD_DIR;
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -35,7 +33,7 @@ if (!fs.existsSync(path.join(uploadDir, 'images'))) {
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: env.FRONTEND_URL,
   credentials: true,
 }));
 app.use(express.json());

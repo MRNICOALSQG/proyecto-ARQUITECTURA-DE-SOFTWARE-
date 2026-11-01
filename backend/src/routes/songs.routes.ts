@@ -4,12 +4,13 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../config/database';
+import { env } from '../config/env';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
 // Multer config for song uploads
-const uploadDir = process.env.UPLOAD_DIR || './uploads';
+const uploadDir = env.UPLOAD_DIR;
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -43,7 +44,7 @@ const allowedMimeTypes = [
 const upload = multer({
   storage,
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE || '52428800'), // 50MB
+    fileSize: env.MAX_FILE_SIZE,
   },
   fileFilter: (_req, file, cb) => {
     if (allowedMimeTypes.includes(file.mimetype)) {
@@ -245,7 +246,8 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
 router.use((err: any, _req: Request, res: Response, _next: any) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'El archivo excede el tamaño máximo de 50MB' });
+      const maxFileSizeMb = Math.round(env.MAX_FILE_SIZE / (1024 * 1024));
+      return res.status(400).json({ error: `El archivo excede el tamaño máximo de ${maxFileSizeMb}MB` });
     }
     return res.status(400).json({ error: err.message });
   }

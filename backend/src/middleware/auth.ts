@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import passport from 'passport';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import { env } from '../config/env';
 
 export interface AuthUser {
   id: string;
@@ -18,9 +19,9 @@ export function generateToken(userId: string): { token: string; jti: string } {
   const jti = uuidv4();
   const token = jwt.sign(
     { sub: userId, jti },
-    process.env.JWT_SECRET || 'fallback-secret',
+    env.JWT_SECRET,
     {
-      expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+      expiresIn: env.JWT_EXPIRES_IN as unknown as SignOptions['expiresIn'],
       algorithm: 'HS256',
     }
   );
@@ -28,7 +29,7 @@ export function generateToken(userId: string): { token: string; jti: string } {
 }
 
 export function decodeToken(token: string): any {
-  return jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret', {
+  return jwt.verify(token, env.JWT_SECRET, {
     algorithms: ['HS256'],
   });
 }
