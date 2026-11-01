@@ -3,11 +3,12 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import { env } from '../config/env';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
-const uploadDir = process.env.UPLOAD_DIR || './uploads';
+const uploadDir = env.UPLOAD_DIR;
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {

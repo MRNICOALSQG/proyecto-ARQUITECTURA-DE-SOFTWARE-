@@ -1,13 +1,13 @@
+const path = require('path');
 const { Pool } = require('pg');
-require('dotenv').config();
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
-const pool = new Pool({
-  host: process.env.DATABASE_HOST || 'localhost',
-  port: parseInt(process.env.DATABASE_PORT || '5433'),
-  database: process.env.DATABASE_NAME || 'rinne',
-  user: process.env.DATABASE_USER || 'rinne_user',
-  password: process.env.DATABASE_PASSWORD || 'rinne_secret_2026',
-});
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL es obligatoria. Defínela en backend/.env (ver backend/.env.example).');
+  process.exit(1);
+}
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function migrate() {
   try {

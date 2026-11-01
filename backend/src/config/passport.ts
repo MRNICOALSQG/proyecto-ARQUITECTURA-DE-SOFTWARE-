@@ -1,6 +1,7 @@
 import { PassportStatic } from 'passport';
 import { Strategy as JwtStrategy, ExtractJwt, StrategyOptions } from 'passport-jwt';
 import { query } from './database';
+import { env } from './env';
 
 export function configurePassport(passport: PassportStatic): void {
   const opts: StrategyOptions = {
@@ -8,7 +9,7 @@ export function configurePassport(passport: PassportStatic): void {
       ExtractJwt.fromAuthHeaderAsBearerToken(),
       ExtractJwt.fromUrlQueryParameter('token')
     ]),
-    secretOrKey: process.env.JWT_SECRET || 'fallback-secret',
+    secretOrKey: env.JWT_SECRET,
     algorithms: ['HS256'],
   };
 
