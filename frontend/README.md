@@ -1,5 +1,16 @@
 # React + TypeScript + Vite
 
+## Configuracion de entorno
+
+Copia `.env.example` como `.env` solo si necesitas cambiar los valores por defecto.
+
+- `VITE_API_URL`: URL base de la API. Valor por defecto `/api`.
+- `DEV_API_TARGET`: destino del proxy de Vite en desarrollo (por defecto `http://localhost:3001`). No se expone al cliente.
+
+En desarrollo, Vite reenvia `/api` y `/uploads` a `DEV_API_TARGET`. En produccion, el frontend debe servirse detras de un reverse proxy que enrute `/api` y `/uploads` al backend; el proxy de Vite no sustituye esa configuracion.
+
+Las variables `VITE_*` se resuelven en tiempo de build: si cambias `VITE_API_URL`, reconstruye el frontend.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

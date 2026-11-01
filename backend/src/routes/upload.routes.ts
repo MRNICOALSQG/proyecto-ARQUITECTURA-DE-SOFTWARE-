@@ -42,7 +42,7 @@ router.post('/image', authenticate, upload.single('image'), (req: Request, res: 
     if (!req.file) {
       return res.status(400).json({ error: 'No se proporcionó imagen' });
     }
-    const fileUrl = `http://localhost:3001/uploads/images/${req.file.filename}`;
+    const fileUrl = `/uploads/images/${req.file.filename}`;
     res.json({ url: fileUrl });
   } catch (error) {
     console.error('Image upload error:', error);
