@@ -1,84 +1,61 @@
-# React + TypeScript + Vite
+# Frontend de Rin'ne
 
-## Configuracion de entorno
+SPA construida con React 19, TypeScript, Vite, Tailwind CSS, Zustand y Howler.
 
-Copia `.env.example` como `.env` solo si necesitas cambiar los valores por defecto.
+## Requisitos
 
-- `VITE_API_URL`: URL base de la API. Valor por defecto `/api`.
-- `DEV_API_TARGET`: destino del proxy de Vite en desarrollo (por defecto `http://localhost:3001`). No se expone al cliente.
+- Node.js 22 o superior.
+- pnpm 9.15.9 (fijado en `packageManager`). Si Corepack no esta disponible, usa
+  `npx pnpm@9.15.9`.
 
-En desarrollo, Vite reenvia `/api` y `/uploads` a `DEV_API_TARGET`. En produccion, el frontend debe servirse detras de un reverse proxy que enrute `/api` y `/uploads` al backend; el proxy de Vite no sustituye esa configuracion.
+## Instalacion
 
-Las variables `VITE_*` se resuelven en tiempo de build: si cambias `VITE_API_URL`, reconstruye el frontend.
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Entorno
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Copia `.env.example` como `.env` solo si necesitas cambiar los valores por
+defecto:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+| Variable | Por defecto | Descripcion |
+| --- | --- | --- |
+| `VITE_API_URL` | `/api` | URL base de la API; se resuelve en tiempo de build |
+| `DEV_API_TARGET` | `http://localhost:3001` | Destino del proxy de Vite en desarrollo |
+
+En desarrollo, Vite reenvia `/api` y `/uploads` a `DEV_API_TARGET`. En produccion
+el frontend debe servirse detras de un reverse proxy que enrute ambas rutas al
+backend.
+
+## Comandos
+
+```bash
+pnpm dev      # desarrollo en http://localhost:5173
+pnpm build    # tsc -b + vite build
+pnpm lint     # ESLint
+pnpm preview  # sirve el build de produccion
 ```
+
+## Estructura
+
+```text
+src/api/          Cliente Axios y utilidades de URLs
+src/components/   Componentes de interfaz y reproductor
+src/pages/        Login y dashboard
+src/stores/       Estado global con Zustand
+src/assets/       Recursos importados por la aplicacion
+public/           Archivos estaticos servidos tal cual
+```
+
+## Estado conocido
+
+`pnpm build` falla actualmente en `tsc -b` por cinco imports y variables sin
+usar en `Favorites.tsx` y `Player.tsx` (TS6133). Es un problema preexistente y
+ajeno a la organizacion de dependencias. Para validar solo el empaquetado:
+
+```bash
+pnpm exec vite build
+```
+
+Consulta el README raiz para la instalacion completa (base de datos y backend).

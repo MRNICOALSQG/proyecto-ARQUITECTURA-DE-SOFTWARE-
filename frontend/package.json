@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -10,17 +11,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tsparticles/react": "^4.0.2",
-    "@tsparticles/slim": "^4.0.2",
     "axios": "^1.16.1",
     "howler": "^2.2.4",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.15.1",
-    "react-tsparticles": "^2.12.2",
-    "tsparticles": "^4.0.2",
-    "tsparticles-engine": "^2.12.0",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
@@ -40,12 +36,5 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@tsparticles/engine",
-      "react-tsparticles",
-      "tsparticles-engine"
-    ]
   }
 }
