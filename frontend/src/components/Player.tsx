@@ -4,7 +4,7 @@ import { SkipBack, SkipForward, Play, Pause, Settings as SettingsIcon, Volume2, 
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import { usePreferencesStore } from '../stores/preferencesStore';
-import { api } from '../api/client';
+import { api, buildApiUrl } from '../api/client';
 
 export function Player() {
   const { 
@@ -86,7 +86,9 @@ export function Player() {
     }
     clearProgressInterval();
 
-    const streamUrl = `http://localhost:3001/api/songs/${song.id}/stream?token=${token}`;
+    const streamUrl = buildApiUrl(
+      `/songs/${song.id}/stream?token=${encodeURIComponent(token)}`
+    );
 
     const sound = new Howl({
       src: [streamUrl],

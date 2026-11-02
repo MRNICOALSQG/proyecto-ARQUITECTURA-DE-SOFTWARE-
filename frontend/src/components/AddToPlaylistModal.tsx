@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, ListMusic } from 'lucide-react';
-import { api } from '../api/client';
+import { api, getImageUrl } from '../api/client';
 import type { Song } from '../stores/playerStore';
 
 interface AddToPlaylistModalProps {
@@ -61,7 +61,7 @@ export function AddToPlaylistModal({ isOpen, onClose, song }: AddToPlaylistModal
               >
                 <div className="w-10 h-10 rounded overflow-hidden bg-surface-variant flex items-center justify-center shrink-0">
                   {pl.cover_url ? (
-                    <img src={pl.cover_url} alt={pl.name} className="w-full h-full object-cover" />
+                    <img src={getImageUrl(pl.cover_url)} alt={pl.name} className="w-full h-full object-cover" />
                   ) : (
                     <ListMusic className="w-5 h-5 text-primary" />
                   )}
