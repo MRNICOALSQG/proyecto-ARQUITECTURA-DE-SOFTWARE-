@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import passport from 'passport';
 import { env } from './config/env';
+import { pool } from './config/database';
 import { configurePassport } from './config/passport';
 import authRoutes from './routes/auth.routes';
 import songsRoutes from './routes/songs.routes';
@@ -38,8 +39,16 @@ export function createApp(): Express {
   app.use('/api/upload', uploadRoutes);
 
   // Health check
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  app.get('/api/health', async (_req, res) => {
+    try {
+      await pool.query('SELECT 1');
+    } catch (error) {
+      console.error('Health check failed:', error);
+      res.status(503).json({ status: 'error', db: 'error', version: env.APP_VERSION });
+      return;
+    }
+
+    res.json({ status: 'ok', db: 'ok', version: env.APP_VERSION });
   });
 
   // Global error handler
