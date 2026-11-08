@@ -2,12 +2,12 @@
   "name": "rinne-backend",
   "version": "1.0.0",
   "description": "Rin'ne Music Streaming Platform - Backend API",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "packageManager": "pnpm@9.15.9",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

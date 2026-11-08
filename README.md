@@ -100,7 +100,7 @@ backend; el proxy de Vite no sustituye esa configuracion.
 ```bash
 pnpm dev      # ts-node-dev con recarga automatica
 pnpm build    # compila TypeScript a dist/
-pnpm start    # ejecuta dist/index.js
+pnpm start    # ejecuta dist/server.js
 ```
 
 ### Frontend
