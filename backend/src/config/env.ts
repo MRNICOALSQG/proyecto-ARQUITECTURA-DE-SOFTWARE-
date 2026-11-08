@@ -14,6 +14,7 @@ if (fs.existsSync(envFile)) {
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  APP_VERSION: z.string().min(1, 'APP_VERSION no puede estar vacío').default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   FRONTEND_URL: z.string().url('FRONTEND_URL debe ser una URL válida').default('http://localhost:5173'),
 

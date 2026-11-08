@@ -8,6 +8,12 @@ export const pool = new Pool({
   connectionTimeoutMillis: env.DB_CONNECTION_TIMEOUT_MS,
 });
 
+// A dropped idle connection must not crash the process. The health check and
+// every query handle their own errors; this listener only logs the pool event.
+pool.on('error', (error) => {
+  console.error('Unexpected error on idle PostgreSQL client:', error.message);
+});
+
 export async function testConnection(): Promise<void> {
   try {
     const client = await pool.connect();
