@@ -13,13 +13,16 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-rinne}
       POSTGRES_USER: ${POSTGRES_USER:-rinne_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatoria}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatoria y debe ser URL-safe (solo A-Za-z0-9._~-)}
     volumes:
       - pgdata:/var/lib/postgresql/data
       # El esquema solo se ejecuta cuando el volumen de datos esta vacio.
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      # DB_PASSWORD se inserta tal cual en DATABASE_URL; si no es URL-safe, el
+      # parser de la API decodifica caracteres y la autenticacion falla. Marca
+      # la base como no saludable para detectarlo antes de arrancar la API.
+      test: ["CMD-SHELL", "printf '%s' \"$$POSTGRES_PASSWORD\" | grep -Eq '^[A-Za-z0-9._~-]+$$' || { echo 'DB_PASSWORD debe ser URL-safe: solo A-Za-z0-9._~-' >&2; exit 1; }; pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,7 +40,9 @@ services:
       NODE_ENV: production
       PORT: "3001"
       # El host `db` es el nombre del servicio dentro de la red de Compose.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-rinne_user}:${DB_PASSWORD:?DB_PASSWORD es obligatoria}@db:5432/${POSTGRES_DB:-rinne}
+      # DB_PASSWORD debe ser URL-safe para que PostgreSQL y el parser de la API
+      # reciban exactamente la misma contrasena (sin percent-encoding manual).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rinne_user}:${DB_PASSWORD:?DB_PASSWORD es obligatoria y debe ser URL-safe (solo A-Za-z0-9._~-)}@db:5432/${POSTGRES_DB:-rinne}
       UPLOAD_DIR: /data/uploads
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
     volumes:

@@ -43,8 +43,9 @@ rinne-dashboard-preview/  Prototipo estatico de diseno (no forma parte del build
    ```
 
 2. Edita `.env` y cambia como minimo `DB_PASSWORD` y `JWT_SECRET`.
-   `JWT_SECRET` debe tener al menos 32 caracteres. No uses los valores de
-   ejemplo en un entorno real.
+   `DB_PASSWORD` debe ser URL-safe (solo `[A-Za-z0-9._~-]`) y `JWT_SECRET` debe
+   tener al menos 32 caracteres. No uses los valores de ejemplo en un entorno
+   real.
 
 3. Construye y levanta los tres servicios:
 
@@ -104,7 +105,7 @@ El archivo `.env` de la raiz alimenta a Docker Compose y se pasa a la API con
 | --- | --- | --- |
 | `POSTGRES_DB` | `rinne` | Nombre de la base de datos |
 | `POSTGRES_USER` | `rinne_user` | Usuario de PostgreSQL |
-| `DB_PASSWORD` | - | Contrasena de PostgreSQL; obligatoria |
+| `DB_PASSWORD` | - | Contrasena de PostgreSQL; obligatoria y URL-safe |
 | `JWT_SECRET` | - | Secreto de firma JWT; minimo 32 caracteres |
 | `JWT_EXPIRES_IN` | `24h` | Duracion del token (`15m`, `24h`, `7d`) |
 | `FRONTEND_URL` | `http://localhost:8080` | Origen permitido por CORS |
@@ -112,7 +113,7 @@ El archivo `.env` de la raiz alimenta a Docker Compose y se pasa a la API con
 | `DB_POOL_MAX` | `20` | Conexiones maximas del pool |
 | `DB_IDLE_TIMEOUT_MS` | `30000` | Tiempo de inactividad del pool |
 | `DB_CONNECTION_TIMEOUT_MS` | `2000` | Timeout de conexion |
-| `TAG` | `latest` | Etiqueta de las imagenes de GHCR en produccion |
+| `TAG` | - | Etiqueta obligatoria de las imagenes de GHCR en produccion |
 
 Compose construye `DATABASE_URL` automaticamente con el host interno `db`:
 
@@ -120,9 +121,20 @@ Compose construye `DATABASE_URL` automaticamente con el host interno `db`:
 postgresql://${POSTGRES_USER}:${DB_PASSWORD}@db:5432/${POSTGRES_DB}
 ```
 
-No es necesario definir `DATABASE_URL` en `.env`. Si `DB_PASSWORD` contiene
-caracteres especiales, codificalos para URL (por ejemplo `@` como `%40` y `:`
-como `%3A`).
+`DB_PASSWORD` se usa dos veces: como contrasena real de PostgreSQL
+(`POSTGRES_PASSWORD`) y dentro de `DATABASE_URL`. Por eso debe ser **URL-safe**:
+solo `[A-Za-z0-9._~-]`. Evita `@`, `:`, `/`, `?`, `#`, `%` y espacios.
+
+No codifiques caracteres a mano (por ejemplo `@` como `%40` o `:` como `%3A`).
+El parser de `DATABASE_URL` en la API decodifica esas secuencias, de modo que la
+contrasena con la que se conecta no coincidiria con la que inicializo
+PostgreSQL. Usa directamente una contrasena que ya cumpla el conjunto permitido.
+
+El healthcheck de `db` verifica este requisito: si `DB_PASSWORD` contiene
+caracteres fuera del conjunto permitido, la base queda `unhealthy` y la API no
+arranca, en lugar de fallar mas tarde con un error de autenticacion.
+
+No es necesario definir `DATABASE_URL` en `.env`.
 
 `UPLOAD_DIR` se fija a `/data/uploads` dentro del contenedor y `NODE_ENV` a
 `production`; no deben cambiarse en el stack de Compose.
@@ -142,6 +154,75 @@ Al volver a ejecutar `docker compose up`, los datos siguen disponibles.
 > **Advertencia:** `docker compose down -v` elimina tambien los volumenes y,
 > por tanto, todos los datos de PostgreSQL y los archivos subidos. Es una accion
 > destructiva e irreversible.
+
+### Continuidad desde el Compose historico
+
+El archivo `database/docker-compose.yml` es anterior al stack raiz y **no
+comparte sus volumenes**:
+
+| Stack | Proyecto Compose | Volumen de PostgreSQL | Puerto del host |
+| --- | --- | --- | --- |
+| `database/docker-compose.yml` | `database` | `database_rinne_pgdata` | `5433` |
+| `compose.yml` / `compose.prod.yml` | `rinne` | `rinne_pgdata` | ninguno |
+
+Los datos **no se trasladan automaticamente**. Al levantar el stack raiz se crea
+un volumen `rinne_pgdata` nuevo y `init.sql` inicializa un esquema vacio. El
+volumen antiguo `database_rinne_pgdata` sigue existiendo, pero no se monta en el
+stack nuevo. Lo mismo ocurre con los archivos subidos: el stack raiz usa el
+volumen `uploads`, mientras que el desarrollo antiguo los guardaba en
+`backend/uploads/`.
+
+> **Advertencia:** haz una copia de seguridad y verifica que el respaldo se puede
+> restaurar antes de migrar. No ejecutes `docker compose down -v` en ninguno de
+> los dos stacks hasta confirmar que los datos estan en el stack nuevo.
+
+Procedimiento documentado (no ejecutado durante la revision del Cambio 13).
+Ajusta credenciales y nombres de contenedor a tu entorno:
+
+1. Exporta la base antigua desde el contenedor `rinne-postgres`:
+
+   ```bash
+   docker exec rinne-postgres pg_dump -U rinne_user -Fc -d rinne -f /tmp/rinne_backup.dump
+   docker cp rinne-postgres:/tmp/rinne_backup.dump ./rinne_backup.dump
+   ```
+
+2. Levanta solo la base del stack nuevo (crea `rinne_pgdata` si no existe):
+
+   ```bash
+   docker compose up -d db
+   ```
+
+3. Restaura el respaldo sobre el esquema inicial. `--clean --if-exists`
+   reemplaza las tablas vacias creadas por `init.sql`:
+
+   ```bash
+   docker cp ./rinne_backup.dump rinne-db-1:/tmp/rinne_backup.dump
+   docker compose exec -T db pg_restore --clean --if-exists --no-owner -U rinne_user -d rinne /tmp/rinne_backup.dump
+   ```
+
+   Ejecuta este paso solo sobre un stack nuevo o vacio. Si el stack nuevo ya
+   tiene datos, detente y revisa el respaldo antes de continuar.
+
+4. Migra los archivos subidos desde `backend/uploads/` al volumen `uploads`:
+
+   ```bash
+   docker compose up -d api
+   docker cp backend/uploads/. rinne-api-1:/data/uploads/
+   ```
+
+5. Verifica el estado y los datos antes de retirar el stack antiguo:
+
+   ```bash
+   docker compose ps
+   curl http://localhost:8080/api/health
+   ```
+
+6. Cuando la verificacion sea correcta, apaga el stack antiguo **sin** borrar su
+   volumen, para conservar `database_rinne_pgdata` como respaldo:
+
+   ```bash
+   docker compose -f database/docker-compose.yml down
+   ```
 
 ## Produccion con `compose.prod.yml`
 
@@ -165,6 +246,9 @@ Ambos archivos comparten el proyecto `rinne` y los volumenes `pgdata` y
 `uploads`. En un mismo host ejecuta una configuracion u otra, no las dos a la
 vez.
 
+`TAG` es obligatoria. Sin ella, `docker compose -f compose.prod.yml` falla a
+proposito en lugar de desplegar `latest`:
+
 ```bash
 # Selecciona la version publicada y descarga las imagenes
 TAG=v1.0.0 docker compose -f compose.prod.yml pull
@@ -176,6 +260,9 @@ TAG=v1.0.0 docker compose -f compose.prod.yml up -d
 docker compose -f compose.prod.yml ps
 docker compose -f compose.prod.yml logs -f
 ```
+
+No uses `TAG=latest` en produccion: la etiqueta debe identificar la version que
+el pipeline publico para ese despliegue.
 
 El pipeline de GitHub Actions (Cambio 14, pendiente) sera el encargado de
 publicar esas imagenes en GHCR con la etiqueta correspondiente.
@@ -341,6 +428,7 @@ organizacion de dependencias ni con Docker Compose:
 ## Seguridad
 
 - No versiones `.env`; solo `.env.example`.
-- Cambia `DB_PASSWORD` y `JWT_SECRET` antes de desplegar.
+- Cambia `DB_PASSWORD` (URL-safe) y `JWT_SECRET` antes de desplegar.
+- Define `TAG` explicitamente en produccion; no uses `latest`.
 - PostgreSQL y la API no se publican al host en el stack de Compose.
 - `docker compose down -v` elimina los datos de forma irreversible.
