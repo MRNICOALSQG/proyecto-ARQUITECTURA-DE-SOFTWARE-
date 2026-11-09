@@ -1,7 +1,10 @@
 -- ============================================
--- Rin'ne Database Schema
+-- Rin'ne Database Schema (historico)
 -- PostgreSQL 15
 -- ============================================
+-- Se conserva para el Compose historico de database/docker-compose.yml.
+-- La fuente de verdad del esquema es database/migrations/001_esquema_inicial.sql.
+-- No agregues cambios de esquema aqui: crea una migracion nueva.
 
 -- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";

@@ -14,7 +14,7 @@ personalizacion visual.
 
 ```text
 backend/                  API REST con Express, TypeScript y PostgreSQL
-database/                 Esquema inicial (init.sql) y Compose historico de la base
+database/                 Migraciones versionadas (migrations/) e init.sql historico
 frontend/                 SPA con React, Vite, Tailwind CSS, Zustand y Howler
 compose.yml               Stack completo para local/staging (db + api + web)
 compose.prod.yml          Stack de produccion con imagenes de GHCR
@@ -73,6 +73,7 @@ rinne-dashboard-preview/  Prototipo estatico de diseno (no forma parte del build
 | Servicio | Imagen / build | Acceso | Funcion |
 | --- | --- | --- | --- |
 | `db` | `postgres:15-alpine` | Solo red interna, puerto `5432` | PostgreSQL 15 |
+| `migrate` | Build de `backend/` | Solo red interna | Aplica migraciones y termina |
 | `api` | Build de `backend/` | Solo red interna, puerto `3001` | API REST y archivos |
 | `web` | Build de `frontend/` | Host `8080` -> contenedor `80` | Nginx: SPA y reverse proxy |
 
@@ -93,8 +94,11 @@ contenedor se recrea.
 El arranque respeta las dependencias:
 
 1. `db` inicia y su healthcheck ejecuta `pg_isready`.
-2. `api` espera a que `db` este saludable y valida `/api/health`.
-3. `web` espera a que `api` este saludable antes de arrancar.
+2. `migrate` espera a que `db` este saludable, aplica las migraciones pendientes
+   y termina.
+3. `api` espera a que `db` este saludable y a que `migrate` termine con exito;
+   despues valida `/api/health`.
+4. `web` espera a que `api` este saludable antes de arrancar.
 
 ## Variables de entorno
 
@@ -147,6 +151,10 @@ El stack declara dos volumenes nombrados:
 | --- | --- | --- |
 | `pgdata` | `/var/lib/postgresql/data` | Datos de PostgreSQL |
 | `uploads` | `/data/uploads` | Imagenes y canciones subidas |
+
+El esquema no se carga desde `init.sql` en el stack raiz: lo aplica el servicio
+`migrate` desde `database/migrations/`. El historial queda en la tabla
+`schema_migrations`, dentro de `pgdata`.
 
 Ambos persisten al detener y eliminar los contenedores con `docker compose down`.
 Al volver a ejecutar `docker compose up`, los datos siguen disponibles.
@@ -289,17 +297,26 @@ Para trabajar con recarga automatica en local:
    docker compose up -d
    ```
 
-3. Instala dependencias y arranca cada proyecto:
+   La primera vez, `init.sql` crea el esquema en el volumen
+   `database_rinne_pgdata`. Al ejecutar `pnpm migrate`, el runner reconoce ese
+   esquema y lo adopta como baseline sin borrar ni recrear tablas.
+
+3. Instala dependencias, aplica migraciones y arranca cada proyecto:
 
    ```bash
    cd backend
    pnpm install
+   pnpm migrate
    pnpm dev
 
    cd ../frontend
    pnpm install
    pnpm dev
    ```
+
+   `pnpm migrate` toma la conexion de `DATABASE_URL` en `backend/.env`. Si la
+   base ya tiene el esquema inicial, solo registra el baseline; si esta vacia,
+   aplica `001_esquema_inicial.sql`.
 
 4. Abre `http://localhost:5173`. La API escucha en `http://localhost:3001`.
 
@@ -349,6 +366,7 @@ de Compose esa funcion la cumple Nginx, que reenvia ambas rutas a `api:3001`.
 pnpm dev      # ts-node-dev con recarga automatica
 pnpm build    # compila TypeScript a dist/
 pnpm start    # ejecuta dist/server.js
+pnpm migrate  # aplica las migraciones pendientes con backend/.env
 ```
 
 ### Frontend
@@ -386,22 +404,128 @@ docker compose ps
 
 ## Migraciones y base de datos
 
-El esquema vive en `database/init.sql` y crea las tablas, indices, el trigger de
-preferencias y la extension `pgcrypto`. PostgreSQL lo ejecuta **solo** cuando el
-volumen `pgdata` esta vacio (primer arranque).
+### Que son y donde viven
 
-El sistema de migraciones incrementales corresponde al Cambio 10, que **aun no
-esta implementado**. Por tanto, hoy no existe un comando de migraciones como
-`pnpm migrate`; para aplicar cambios de esquema hay que hacerlo manualmente o
-recrear la base desde cero.
+El esquema se gestiona con migraciones SQL versionadas y ordenadas. La fuente de
+verdad es `database/migrations/`:
 
-Para reiniciar la base desde cero (accion destructiva, borra tambien los
-archivos subidos):
+```text
+database/migrations/
+  001_esquema_inicial.sql
+```
+
+Cada archivo se ejecuta una sola vez y queda registrado en la tabla
+`schema_migrations` de PostgreSQL. El runner es propio, minimo y en TypeScript
+(`backend/src/migrations/`); reutiliza el pool centralizado
+(`backend/src/config/database.ts`) y la configuracion de entorno
+(`backend/src/config/env.ts`), y no agrega dependencias.
+
+`database/init.sql` se conserva solo para el Compose historico de
+`database/docker-compose.yml`. El stack raiz (`compose.yml` y
+`compose.prod.yml`) ya no lo ejecuta.
+
+### Como funciona el registro
+
+`schema_migrations` guarda `version`, `name`, `checksum`, `applied_at`,
+`execution_ms` y `baseline`. En cada ejecucion el runner:
+
+1. Adquiere un `pg_advisory_lock` para impedir que dos procesos migren a la vez.
+2. Crea `schema_migrations` si no existe.
+3. Compara los checksums de las migraciones ya aplicadas. Si un archivo cambio,
+   aborta sin tocar el esquema.
+4. Aplica en orden numerico las pendientes, cada una dentro de su transaccion.
+5. Registra la migracion solo si su SQL termino correctamente.
+
+Si una migracion falla, se hace `ROLLBACK`, no se registra y el proceso termina
+con codigo distinto de cero.
+
+### Como ejecutar `pnpm migrate`
+
+Desde `backend/`, con `backend/.env` apuntando a la base que quieres migrar:
 
 ```bash
-docker compose down -v
-docker compose up --build -d
+cd backend
+pnpm install
+pnpm migrate
 ```
+
+El script compila el backend y ejecuta `dist/migrations/cli.js`. La conexion sale
+de `DATABASE_URL` en `backend/.env`. Para el Compose historico de desarrollo, ese
+valor es `postgresql://rinne_user:...@localhost:5433/rinne`.
+
+Si quieres usar otro directorio de migraciones, define `MIGRATIONS_DIR`. Por
+defecto se busca `database/migrations/` desde `backend/` o desde la raiz.
+
+### Ejecucion antes de la API en Compose
+
+`compose.yml` y `compose.prod.yml` incluyen un servicio one-shot `migrate`:
+
+```text
+db (healthy) -> migrate (termina bien) -> api (healthy) -> web
+```
+
+- `migrate` usa la misma imagen/build que `api`, monta
+  `./database/migrations:/app/database/migrations:ro` y ejecuta
+  `node dist/migrations/cli.js`.
+- `api` declara
+  `depends_on: migrate: condition: service_completed_successfully`. La API no
+  arranca si las migraciones fallan.
+- `migrate` no se reinicia (`restart: "no"`): es un proceso de un solo uso.
+- Como `migrate` es el unico servicio que migra, no hay dos APIs aplicando
+  migraciones a la vez. El advisory lock tambien protege ejecuciones manuales
+  concurrentes.
+
+En produccion, el checkout debe incluir `database/migrations/`, porque el
+servicio lo monta en solo lectura.
+
+### Como registrar una futura migracion
+
+1. Crea un archivo nuevo con el siguiente numero:
+
+   ```text
+   database/migrations/002_descripcion_corta.sql
+   ```
+
+   Usa `NNN_nombre.sql`, con numeracion de al menos tres digitos.
+2. Escribe SQL idempotente cuando sea posible y **no** incluyas `BEGIN`/`COMMIT`:
+   el runner ya envuelve cada archivo en una transaccion.
+3. No edites una migracion ya aplicada. El checksum lo detecta y el runner
+   aborta. Para corregir algo, crea otra migracion.
+4. Prueba en una base desechable antes de ejecutarla sobre datos reales.
+5. Ejecuta `pnpm migrate` o levanta el stack con Compose.
+
+### Como se adopta una base existente
+
+Una base creada por `database/init.sql` ya tiene las 7 tablas, pero no tiene
+`schema_migrations`. Para evitar recrearla o perder datos, el runner:
+
+1. Detecta que no hay historial y que existen tablas.
+2. Compara el esquema real contra el que produce `001_esquema_inicial.sql`:
+   tablas, columnas, tipos, nulabilidad, defaults, claves primarias, claves
+   foraneas con `ON DELETE`, indices, trigger y extension `pgcrypto`.
+3. Si coincide exactamente, registra `001` como `baseline` **sin ejecutar su
+   SQL** y sin tocar las tablas ni los datos.
+4. Si hay diferencias, aborta con el detalle, no registra nada y devuelve codigo
+   distinto de cero. En ese caso hay que revisar el esquema manualmente; no se
+   debe forzar el baseline.
+
+Una base vacia, en cambio, ejecuta `001_esquema_inicial.sql` normalmente y crea
+las 7 tablas, indices, relaciones, trigger y la extension.
+
+### Advertencias para proteger los datos
+
+> **No borres el volumen `pgdata` ni ejecutes `docker compose down -v`** para
+> "arreglar" una migracion. Eso elimina la base y los archivos subidos de forma
+> irreversible.
+
+- Haz una copia de seguridad antes de migrar datos reales.
+- No edites `schema_migrations` a mano.
+- No modifiques migraciones ya aplicadas.
+- Si el runner aborta por diferencias de esquema, detente y revisa; no marques
+  la migracion como aplicada manualmente.
+- Los datos de `database_rinne_pgdata` (Compose historico) no se trasladan solos
+  a `rinne_pgdata` (stack raiz). Usa el procedimiento de continuidad de la
+  seccion anterior.
 
 ## API y archivos
 

@@ -22,7 +22,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatoria y debe ser URL-safe (solo A-Za-z0-9._~-)}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      # El esquema lo aplica el servicio `migrate`, no init.sql.
     healthcheck:
       # DB_PASSWORD se inserta tal cual en DATABASE_URL; si no es URL-safe, el
       # parser de la API decodifica caracteres y la autenticacion falla. Marca
@@ -32,6 +32,29 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  migrate:
+    image: ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:${TAG:?TAG es obligatoria}
+    # Servicio one-shot: aplica las migraciones pendientes y termina.
+    restart: "no"
+    command: ["node", "dist/migrations/cli.js"]
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rinne_user}:${DB_PASSWORD:?DB_PASSWORD es obligatoria y debe ser URL-safe (solo A-Za-z0-9._~-)}@db:5432/${POSTGRES_DB:-rinne}
+      MIGRATIONS_DIR: /app/database/migrations
+    volumes:
+      # El checkout de produccion debe incluir database/migrations/.
+      - ./database/migrations:/app/database/migrations:ro
+    depends_on:
+      db:
+        condition: service_healthy
     logging:
       driver: json-file
       options:
@@ -56,6 +79,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     logging:
       driver: json-file
       options:
