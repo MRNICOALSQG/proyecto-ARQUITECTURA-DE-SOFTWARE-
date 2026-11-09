@@ -1,0 +1,68 @@
+# Rin'ne - configuracion local/staging con Docker Compose.
+# Uso: cp .env.example .env && docker compose up --build -d
+#
+# La API y PostgreSQL no publican puertos al host: solo son accesibles desde
+# la red interna de Compose. El unico acceso publico es Nginx en el puerto 8080.
+
+name: rinne
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rinne}
+      POSTGRES_USER: ${POSTGRES_USER:-rinne_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatoria}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # El esquema solo se ejecuta cuando el volumen de datos esta vacio.
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: ./backend
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      # El host `db` es el nombre del servicio dentro de la red de Compose.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rinne_user}:${DB_PASSWORD:?DB_PASSWORD es obligatoria}@db:5432/${POSTGRES_DB:-rinne}
+      UPLOAD_DIR: /data/uploads
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    # El healthcheck de /api/health se hereda de backend/Dockerfile.
+
+  web:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  pgdata:
+  uploads:
