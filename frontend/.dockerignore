@@ -1,0 +1,34 @@
+# Dependencies and build output are generated inside the image.
+node_modules
+dist
+dist-ssr
+*.local
+
+# Local environment files must not be baked into the bundle.
+.env
+.env.*
+!.env.example
+
+# VCS, editors and OS files.
+.git
+.gitignore
+.vscode
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs.
+logs
+*.log
+pnpm-debug.log*
+
+# Docs and container files. nginx.conf is intentionally kept: the prod stage
+# copies it from the build context.
+README.md
+Dockerfile
+.dockerignore

@@ -1,0 +1,30 @@
+# Dependencies and build output are generated inside the image.
+node_modules
+dist
+*.tsbuildinfo
+
+# Runtime data and secrets must never enter the build context.
+uploads
+.env
+.env.*
+!.env.example
+llave
+
+# VCS, editors and OS files.
+.git
+.gitignore
+.vscode
+.idea
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# Logs and temporaries.
+*.log
+pnpm-debug.log*
+*.tmp
+
+# Container files are not needed by the build.
+Dockerfile
+.dockerignore
