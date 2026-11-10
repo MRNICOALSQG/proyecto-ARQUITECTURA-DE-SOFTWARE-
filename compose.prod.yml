@@ -39,10 +39,18 @@ services:
         max-file: "3"
 
   migrate:
+    # TAG debe corresponder a una imagen de API construida desde un commit que
+    # incluya dist/migrations/cli.js (Cambio 10). Una imagen anterior no sirve.
     image: ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:${TAG:?TAG es obligatoria}
     # Servicio one-shot: aplica las migraciones pendientes y termina.
     restart: "no"
-    command: ["node", "dist/migrations/cli.js"]
+    command:
+      - sh
+      - -c
+      - >-
+        test -f dist/migrations/cli.js ||
+        { echo 'La imagen no contiene dist/migrations/cli.js; usa un TAG construido desde el Cambio 10.' >&2; exit 1; };
+        exec node dist/migrations/cli.js
     env_file:
       - .env
     environment:

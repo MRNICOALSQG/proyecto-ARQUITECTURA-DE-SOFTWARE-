@@ -79,6 +79,24 @@ function validateAppliedMigrations(
   }
 }
 
+function getMaxAppliedNumericVersion(applied: AppliedMigration[]): number {
+  let maxVersion = 0;
+
+  for (const row of applied) {
+    const numericVersion = Number.parseInt(row.version, 10);
+    if (!Number.isSafeInteger(numericVersion) || numericVersion <= 0) {
+      throw new Error(
+        `La version registrada ${row.version} en ${SCHEMA_MIGRATIONS_TABLE} no es numerica valida.`
+      );
+    }
+    if (numericVersion > maxVersion) {
+      maxVersion = numericVersion;
+    }
+  }
+
+  return maxVersion;
+}
+
 async function listUserTables(client: PoolClient): Promise<string[]> {
   const result = await client.query<{ table_name: string }>(
     `SELECT table_name
@@ -227,6 +245,19 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<void
         pending = pending.slice(1);
       } else {
         console.log('Base vacia detectada. Se aplicara el esquema inicial.');
+      }
+    }
+
+    const maxAppliedVersion = getMaxAppliedNumericVersion(applied);
+
+    for (const migration of pending) {
+      if (migration.numericVersion <= maxAppliedVersion) {
+        throw new Error(
+          `La migracion ${migration.fileName} (version ${migration.numericVersion}) ` +
+            `no es mayor que la version maxima ya aplicada (${maxAppliedVersion}). ` +
+            'Las migraciones pendientes deben tener una version estrictamente mayor; ' +
+            'no se aplico ninguna migracion fuera de orden.'
+        );
       }
     }
 

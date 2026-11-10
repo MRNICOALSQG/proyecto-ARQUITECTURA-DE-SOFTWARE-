@@ -8,17 +8,11 @@ export interface ColumnSnapshot {
   default: string | null;
 }
 
-export interface ForeignKeySnapshot {
-  columns: string[];
-  referencedTable: string;
-  referencedColumns: string[];
-  onDelete: string;
-}
-
 export interface TableSnapshot {
   columns: ColumnSnapshot[];
   primaryKey: string[];
-  foreignKeys: ForeignKeySnapshot[];
+  /** Definiciones completas (pg_get_constraintdef) de todas las constraints de la tabla. */
+  constraints: string[];
 }
 
 export interface SchemaSnapshot {
@@ -27,6 +21,9 @@ export interface SchemaSnapshot {
   triggers: string[];
   functions: string[];
   extensions: string[];
+  sequences: string[];
+  types: string[];
+  views: string[];
 }
 
 export const SCHEMA_MIGRATIONS_TABLE = 'schema_migrations';
@@ -40,6 +37,20 @@ function column(
 ): ColumnSnapshot {
   return { name, dataType, maxLength, nullable, default: defaultValue };
 }
+
+// pg_get_functiondef() devuelve el cuerpo, los argumentos, el tipo de retorno,
+// la volatilidad, SECURITY DEFINER/INVOKER, LEAKPROOF, STRICT, COST/ROWS y los
+// SET de configuración de la función. Se normaliza el fin de línea porque
+// init.sql usa CRLF y 001 usa LF.
+const EXPECTED_FUNCTION_DEFINITION = `CREATE OR REPLACE FUNCTION public.create_default_preferences()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  INSERT INTO user_preferences (user_id) VALUES (NEW.id);
+  RETURN NEW;
+END;
+$function$`;
 
 // Expected schema produced by 001_esquema_inicial.sql. It is intentionally
 // explicit: baseline adoption must prove that an existing database really has
@@ -56,7 +67,7 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('updated_at', 'timestamp with time zone', true, 'now()'),
     ],
     primaryKey: ['id'],
-    foreignKeys: [],
+    constraints: ['p:PRIMARY KEY (id)', 'u:UNIQUE (email)'],
   },
   songs: {
     columns: [
@@ -73,13 +84,9 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('uploaded_at', 'timestamp with time zone', true, 'now()'),
     ],
     primaryKey: ['id'],
-    foreignKeys: [
-      {
-        columns: ['user_id'],
-        referencedTable: 'users',
-        referencedColumns: ['id'],
-        onDelete: 'CASCADE',
-      },
+    constraints: [
+      'f:FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
+      'p:PRIMARY KEY (id)',
     ],
   },
   user_preferences: {
@@ -99,13 +106,9 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('updated_at', 'timestamp with time zone', true, 'now()'),
     ],
     primaryKey: ['user_id'],
-    foreignKeys: [
-      {
-        columns: ['user_id'],
-        referencedTable: 'users',
-        referencedColumns: ['id'],
-        onDelete: 'CASCADE',
-      },
+    constraints: [
+      'f:FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
+      'p:PRIMARY KEY (user_id)',
     ],
   },
   playlists: {
@@ -117,13 +120,9 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('created_at', 'timestamp with time zone', true, 'now()'),
     ],
     primaryKey: ['id'],
-    foreignKeys: [
-      {
-        columns: ['user_id'],
-        referencedTable: 'users',
-        referencedColumns: ['id'],
-        onDelete: 'CASCADE',
-      },
+    constraints: [
+      'f:FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
+      'p:PRIMARY KEY (id)',
     ],
   },
   playlist_songs: {
@@ -133,19 +132,10 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('added_at', 'timestamp with time zone', true, 'now()'),
     ],
     primaryKey: ['playlist_id', 'song_id'],
-    foreignKeys: [
-      {
-        columns: ['playlist_id'],
-        referencedTable: 'playlists',
-        referencedColumns: ['id'],
-        onDelete: 'CASCADE',
-      },
-      {
-        columns: ['song_id'],
-        referencedTable: 'songs',
-        referencedColumns: ['id'],
-        onDelete: 'CASCADE',
-      },
+    constraints: [
+      'f:FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE',
+      'f:FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE',
+      'p:PRIMARY KEY (playlist_id, song_id)',
     ],
   },
   favorites: {
@@ -155,19 +145,10 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('created_at', 'timestamp with time zone', true, 'now()'),
     ],
     primaryKey: ['user_id', 'song_id'],
-    foreignKeys: [
-      {
-        columns: ['user_id'],
-        referencedTable: 'users',
-        referencedColumns: ['id'],
-        onDelete: 'CASCADE',
-      },
-      {
-        columns: ['song_id'],
-        referencedTable: 'songs',
-        referencedColumns: ['id'],
-        onDelete: 'CASCADE',
-      },
+    constraints: [
+      'f:FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE',
+      'f:FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
+      'p:PRIMARY KEY (user_id, song_id)',
     ],
   },
   revoked_tokens: {
@@ -178,40 +159,123 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('expires_at', 'timestamp with time zone', false, null),
     ],
     primaryKey: ['id'],
-    foreignKeys: [],
+    constraints: ['p:PRIMARY KEY (id)', 'u:UNIQUE (token_jti)'],
   },
 };
 
-const EXPECTED_INDEXES = [
-  'users:users_pkey:primary:unique:id',
-  'users:users_email_key:index:unique:email',
-  'users:idx_users_email:index:nonunique:email',
-  'songs:songs_pkey:primary:unique:id',
-  'songs:idx_songs_user_id:index:nonunique:user_id',
-  'songs:idx_songs_title:index:nonunique:title',
-  'songs:idx_songs_artist:index:nonunique:artist',
-  'user_preferences:user_preferences_pkey:primary:unique:user_id',
-  'playlists:playlists_pkey:primary:unique:id',
-  'playlists:idx_playlists_user_id:index:nonunique:user_id',
-  'playlist_songs:playlist_songs_pkey:primary:unique:playlist_id,song_id',
-  'favorites:favorites_pkey:primary:unique:user_id,song_id',
-  'favorites:idx_favorites_user_id:index:nonunique:user_id',
-  'revoked_tokens:revoked_tokens_pkey:primary:unique:id',
-  'revoked_tokens:revoked_tokens_token_jti_key:index:unique:token_jti',
-  'revoked_tokens:idx_revoked_tokens_jti:index:nonunique:token_jti',
+interface ExpectedIndex {
+  table: string;
+  definition: string;
+}
+
+// pg_get_indexdef() incluye nombre, tabla, método, expresiones, columnas,
+// orden, collation, opclass, columnas INCLUDE y el predicado parcial WHERE.
+const EXPECTED_INDEXES: ExpectedIndex[] = [
+  {
+    table: 'favorites',
+    definition:
+      'CREATE UNIQUE INDEX favorites_pkey ON public.favorites USING btree (user_id, song_id)',
+  },
+  {
+    table: 'favorites',
+    definition:
+      'CREATE INDEX idx_favorites_user_id ON public.favorites USING btree (user_id)',
+  },
+  {
+    table: 'playlist_songs',
+    definition:
+      'CREATE UNIQUE INDEX playlist_songs_pkey ON public.playlist_songs USING btree (playlist_id, song_id)',
+  },
+  {
+    table: 'playlists',
+    definition:
+      'CREATE INDEX idx_playlists_user_id ON public.playlists USING btree (user_id)',
+  },
+  {
+    table: 'playlists',
+    definition:
+      'CREATE UNIQUE INDEX playlists_pkey ON public.playlists USING btree (id)',
+  },
+  {
+    table: 'revoked_tokens',
+    definition:
+      'CREATE INDEX idx_revoked_tokens_jti ON public.revoked_tokens USING btree (token_jti)',
+  },
+  {
+    table: 'revoked_tokens',
+    definition:
+      'CREATE UNIQUE INDEX revoked_tokens_pkey ON public.revoked_tokens USING btree (id)',
+  },
+  {
+    table: 'revoked_tokens',
+    definition:
+      'CREATE UNIQUE INDEX revoked_tokens_token_jti_key ON public.revoked_tokens USING btree (token_jti)',
+  },
+  {
+    table: 'songs',
+    definition:
+      'CREATE INDEX idx_songs_artist ON public.songs USING btree (artist)',
+  },
+  {
+    table: 'songs',
+    definition: 'CREATE INDEX idx_songs_title ON public.songs USING btree (title)',
+  },
+  {
+    table: 'songs',
+    definition:
+      'CREATE INDEX idx_songs_user_id ON public.songs USING btree (user_id)',
+  },
+  {
+    table: 'songs',
+    definition: 'CREATE UNIQUE INDEX songs_pkey ON public.songs USING btree (id)',
+  },
+  {
+    table: 'user_preferences',
+    definition:
+      'CREATE UNIQUE INDEX user_preferences_pkey ON public.user_preferences USING btree (user_id)',
+  },
+  {
+    table: 'users',
+    definition:
+      'CREATE INDEX idx_users_email ON public.users USING btree (email)',
+  },
+  {
+    table: 'users',
+    definition:
+      'CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email)',
+  },
+  {
+    table: 'users',
+    definition: 'CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)',
+  },
 ];
 
-const EXPECTED_TRIGGERS = ['users:trigger_create_preferences:AFTER:INSERT:ROW'];
-const EXPECTED_FUNCTIONS = ['create_default_preferences:plpgsql:trigger'];
-const EXPECTED_EXTENSIONS = ['pgcrypto'];
+const EXPECTED_TRIGGERS = [
+  'users:CREATE TRIGGER trigger_create_preferences AFTER INSERT ON public.users FOR EACH ROW EXECUTE FUNCTION create_default_preferences()|enabled=O|deferrable=false|initdeferred=false',
+];
+
+const EXPECTED_FUNCTIONS = [
+  'create_default_preferences()|volatile=v|secdef=false|leakproof=false|strict=false|config=|definition=' +
+    EXPECTED_FUNCTION_DEFINITION,
+];
+
+const EXPECTED_EXTENSIONS = ['pgcrypto:public', 'plpgsql:pg_catalog'];
+const EXPECTED_SEQUENCES = ['public:revoked_tokens_id_seq:1:1:2147483647:1:false:1'];
+const EXPECTED_TYPES: string[] = [];
+const EXPECTED_VIEWS: string[] = [];
 
 export function expectedSnapshot(): SchemaSnapshot {
   return {
     tables: EXPECTED_TABLES,
-    indexes: [...EXPECTED_INDEXES],
+    indexes: EXPECTED_INDEXES.map((index) =>
+      indexKey(index.table, index.definition, true, true, true)
+    ),
     triggers: [...EXPECTED_TRIGGERS],
     functions: [...EXPECTED_FUNCTIONS],
     extensions: [...EXPECTED_EXTENSIONS],
+    sequences: [...EXPECTED_SEQUENCES],
+    types: [...EXPECTED_TYPES],
+    views: [...EXPECTED_VIEWS],
   };
 }
 
@@ -229,10 +293,73 @@ export function normalizeDefault(value: string | null): string | null {
     .trim();
 }
 
-function foreignKeyKey(table: string, foreignKey: ForeignKeySnapshot): string {
+// PostgreSQL may render stored definitions with CRLF when the SQL file was
+// loaded from Windows. The schema comparison must not depend on that.
+function normalizeDefinition(value: string): string {
+  return value.replace(/\r\n?/g, '\n').trim();
+}
+
+function indexKey(
+  table: string,
+  definition: string,
+  valid: boolean,
+  ready: boolean,
+  live: boolean
+): string {
   return (
-    `${table}:${foreignKey.columns.join(',')}->` +
-    `${foreignKey.referencedTable}:${foreignKey.referencedColumns.join(',')}:${foreignKey.onDelete}`
+    `${table}:${normalizeDefinition(definition)}|` +
+    `valid=${valid}|ready=${ready}|live=${live}`
+  );
+}
+
+function triggerKey(
+  table: string,
+  definition: string,
+  enabled: string,
+  deferrable: boolean,
+  initDeferred: boolean
+): string {
+  return (
+    `${table}:${normalizeDefinition(definition)}|` +
+    `enabled=${enabled}|deferrable=${deferrable}|initdeferred=${initDeferred}`
+  );
+}
+
+function functionKey(
+  name: string,
+  identityArguments: string,
+  definition: string,
+  volatility: string,
+  securityDefiner: boolean,
+  leakproof: boolean,
+  strict: boolean,
+  config: string[] | null
+): string {
+  return (
+    `${name}(${identityArguments})|volatile=${volatility}|` +
+    `secdef=${securityDefiner}|leakproof=${leakproof}|strict=${strict}|` +
+    `config=${(config ?? []).join(',')}|definition=${normalizeDefinition(definition)}`
+  );
+}
+
+function extensionKey(name: string, schema: string): string {
+  return `${name}:${schema}`;
+}
+
+function sequenceKey(row: {
+  schemaname: string;
+  sequencename: string;
+  start_value: string | number | null;
+  min_value: string | number | null;
+  max_value: string | number | null;
+  increment_by: string | number | null;
+  cycle: boolean | null;
+  cache_size: string | number | null;
+}): string {
+  return (
+    `${row.schemaname}:${row.sequencename}:` +
+    `${String(row.start_value)}:${String(row.min_value)}:${String(row.max_value)}:` +
+    `${String(row.increment_by)}:${String(row.cycle)}:${String(row.cache_size)}`
   );
 }
 
@@ -277,86 +404,151 @@ export async function takeSnapshot(
       ORDER BY tc.table_name, kcu.ordinal_position`
   );
 
-  const foreignKeyResult = await client.query<{
+  // Se incluyen PK, UNIQUE, FK, CHECK y EXCLUDE. La definición completa de las
+  // FKs incluye ON DELETE, ON UPDATE, MATCH y diferibilidad.
+  const constraintResult = await client.query<{
     table_name: string;
-    constraint_name: string;
-    column_name: string;
-    referenced_table: string;
-    referenced_column: string;
-    delete_rule: string;
+    constraint_type: string;
+    definition: string;
   }>(
-    `SELECT tc.table_name, tc.constraint_name, kcu.column_name,
-            ccu.table_name AS referenced_table, ccu.column_name AS referenced_column,
-            rc.delete_rule
-       FROM information_schema.table_constraints tc
-       JOIN information_schema.key_column_usage kcu
-         ON kcu.constraint_name = tc.constraint_name
-        AND kcu.constraint_schema = tc.constraint_schema
-       JOIN information_schema.referential_constraints rc
-         ON rc.constraint_name = tc.constraint_name
-        AND rc.constraint_schema = tc.constraint_schema
-       JOIN information_schema.key_column_usage ccu
-         ON ccu.constraint_name = rc.unique_constraint_name
-        AND ccu.constraint_schema = rc.unique_constraint_schema
-        AND ccu.ordinal_position = kcu.position_in_unique_constraint
-      WHERE tc.table_schema = 'public' AND tc.constraint_type = 'FOREIGN KEY'
-      ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position`
+    `SELECT c.relname AS table_name,
+            con.contype::text AS constraint_type,
+            pg_get_constraintdef(con.oid) AS definition
+       FROM pg_constraint con
+       JOIN pg_class c ON c.oid = con.conrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+      ORDER BY c.relname, con.contype::text, pg_get_constraintdef(con.oid)`
   );
 
   const indexResult = await client.query<{
     table_name: string;
     index_name: string;
-    indisprimary: boolean;
-    indisunique: boolean;
-    columns: string[];
+    definition: string;
+    indisvalid: boolean;
+    indisready: boolean;
+    indislive: boolean;
   }>(
-    `SELECT t.relname AS table_name, i.relname AS index_name,
-            ix.indisprimary, ix.indisunique,
-            array_agg(a.attname::text ORDER BY k.ord) AS columns
+    `SELECT t.relname AS table_name,
+            i.relname AS index_name,
+            pg_get_indexdef(ix.indexrelid) AS definition,
+            ix.indisvalid, ix.indisready, ix.indislive
        FROM pg_index ix
        JOIN pg_class t ON t.oid = ix.indrelid
        JOIN pg_namespace n ON n.oid = t.relnamespace
        JOIN pg_class i ON i.oid = ix.indexrelid
-       CROSS JOIN LATERAL unnest(ix.indkey::smallint[]) WITH ORDINALITY AS k(attnum, ord)
-       JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
       WHERE n.nspname = 'public' AND t.relkind = 'r'
-      GROUP BY t.relname, i.relname, ix.indisprimary, ix.indisunique
       ORDER BY t.relname, i.relname`
   );
 
   const triggerResult = await client.query<{
     table_name: string;
     trigger_name: string;
-    action_timing: string;
-    event_manipulation: string;
-    action_orientation: string;
+    definition: string;
+    enabled: string;
+    deferrable: boolean;
+    initdeferred: boolean;
   }>(
-    `SELECT event_object_table AS table_name, trigger_name, action_timing,
-            event_manipulation, action_orientation
-       FROM information_schema.triggers
-      WHERE trigger_schema = 'public'
-      ORDER BY event_object_table, trigger_name, event_manipulation`
+    `SELECT c.relname AS table_name,
+            tg.tgname AS trigger_name,
+            pg_get_triggerdef(tg.oid) AS definition,
+            tg.tgenabled::text AS enabled,
+            tg.tgdeferrable AS deferrable,
+            tg.tginitdeferred AS initdeferred
+       FROM pg_trigger tg
+       JOIN pg_class c ON c.oid = tg.tgrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND NOT tg.tgisinternal
+      ORDER BY c.relname, tg.tgname`
   );
 
+  // pg_get_functiondef() incluye cuerpo, argumentos, volatilidad, seguridad y
+  // configuración. Se excluyen las funciones que pertenecen a extensiones.
   const functionResult = await client.query<{
-    proname: string;
-    lanname: string;
-    result: string;
+    name: string;
+    identity_arguments: string;
+    definition: string;
+    volatility: string;
+    security_definer: boolean;
+    leakproof: boolean;
+    strict: boolean;
+    config: string[] | null;
   }>(
-    `SELECT p.proname, l.lanname, pg_get_function_result(p.oid) AS result
+    `SELECT p.proname AS name,
+            pg_get_function_identity_arguments(p.oid) AS identity_arguments,
+            pg_get_functiondef(p.oid) AS definition,
+            p.provolatile::text AS volatility,
+            p.prosecdef AS security_definer,
+            p.proleakproof AS leakproof,
+            p.proisstrict AS strict,
+            p.proconfig AS config
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
-       JOIN pg_language l ON l.oid = p.prolang
-      WHERE n.nspname = 'public' AND p.proname = 'create_default_preferences'`
+      WHERE n.nspname = 'public'
+        AND p.prokind IN ('f', 'p')
+        AND NOT EXISTS (
+          SELECT 1
+            FROM pg_depend d
+           WHERE d.classid = 'pg_proc'::regclass
+             AND d.objid = p.oid
+             AND d.deptype = 'e'
+        )
+      ORDER BY p.proname, pg_get_function_identity_arguments(p.oid)`
   );
 
-  const extensionResult = await client.query<{ extname: string }>(
-    'SELECT extname FROM pg_extension ORDER BY extname'
+  const extensionResult = await client.query<{ extname: string; schema_name: string }>(
+    `SELECT e.extname, n.nspname AS schema_name
+       FROM pg_extension e
+       JOIN pg_namespace n ON n.oid = e.extnamespace
+      ORDER BY e.extname`
+  );
+
+  const sequenceResult = await client.query<{
+    schemaname: string;
+    sequencename: string;
+    start_value: string | number | null;
+    min_value: string | number | null;
+    max_value: string | number | null;
+    increment_by: string | number | null;
+    cycle: boolean | null;
+    cache_size: string | number | null;
+  }>(
+    `SELECT schemaname, sequencename, start_value, min_value, max_value,
+            increment_by, cycle, cache_size
+       FROM pg_sequences
+      WHERE schemaname = 'public'
+      ORDER BY sequencename`
+  );
+
+  // Los tipos compuestos implícitos de cada tabla se excluyen (typrelid != 0);
+  // un enum, dominio, rango o compuesto independiente adicional sí se detecta.
+  const typeResult = await client.query<{ name: string; type: string }>(
+    `SELECT t.typname AS name, t.typtype::text AS type
+       FROM pg_type t
+       JOIN pg_namespace n ON n.oid = t.typnamespace
+      WHERE n.nspname = 'public'
+        AND (t.typtype IN ('e', 'd', 'r', 'm') OR (t.typtype = 'c' AND t.typrelid = 0))
+        AND NOT EXISTS (
+          SELECT 1
+            FROM pg_depend d
+           WHERE d.classid = 'pg_type'::regclass
+             AND d.objid = t.oid
+             AND d.deptype = 'e'
+        )
+      ORDER BY t.typname`
+  );
+
+  const viewResult = await client.query<{ name: string; kind: string }>(
+    `SELECT c.relname AS name, c.relkind::text AS kind
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind IN ('v', 'm', 'f')
+      ORDER BY c.relname`
   );
 
   const tables: Record<string, TableSnapshot> = {};
   for (const tableName of tableNames) {
-    tables[tableName] = { columns: [], primaryKey: [], foreignKeys: [] };
+    tables[tableName] = { columns: [], primaryKey: [], constraints: [] };
   }
 
   for (const row of columnResult.rows) {
@@ -380,55 +572,57 @@ export async function takeSnapshot(
     }
   }
 
-  const foreignKeysByTable = new Map<string, Map<string, ForeignKeySnapshot>>();
-  for (const row of foreignKeyResult.rows) {
+  for (const row of constraintResult.rows) {
     const table = tables[row.table_name];
-    if (!table) {
-      continue;
+    if (table) {
+      table.constraints.push(
+        `${row.constraint_type}:${normalizeDefinition(row.definition)}`
+      );
     }
-
-    let byConstraint = foreignKeysByTable.get(row.table_name);
-    if (!byConstraint) {
-      byConstraint = new Map<string, ForeignKeySnapshot>();
-      foreignKeysByTable.set(row.table_name, byConstraint);
-    }
-
-    let foreignKey = byConstraint.get(row.constraint_name);
-    if (!foreignKey) {
-      foreignKey = {
-        columns: [],
-        referencedTable: row.referenced_table,
-        referencedColumns: [],
-        onDelete: row.delete_rule,
-      };
-      byConstraint.set(row.constraint_name, foreignKey);
-    }
-    foreignKey.columns.push(row.column_name);
-    foreignKey.referencedColumns.push(row.referenced_column);
-  }
-
-  for (const [tableName, byConstraint] of foreignKeysByTable) {
-    tables[tableName].foreignKeys.push(...byConstraint.values());
   }
 
   return {
     tables,
     indexes: indexResult.rows
       .filter((row) => tables[row.table_name] !== undefined)
-      .map(
-        (row) =>
-          `${row.table_name}:${row.index_name}:${row.indisprimary ? 'primary' : 'index'}:` +
-          `${row.indisunique ? 'unique' : 'nonunique'}:${row.columns.join(',')}`
+      .map((row) =>
+        indexKey(
+          row.table_name,
+          row.definition,
+          row.indisvalid,
+          row.indisready,
+          row.indislive
+        )
       ),
     triggers: triggerResult.rows
       .filter((row) => tables[row.table_name] !== undefined)
-      .map(
-        (row) =>
-          `${row.table_name}:${row.trigger_name}:${row.action_timing}:` +
-          `${row.event_manipulation}:${row.action_orientation}`
+      .map((row) =>
+        triggerKey(
+          row.table_name,
+          row.definition,
+          row.enabled,
+          row.deferrable,
+          row.initdeferred
+        )
       ),
-    functions: functionResult.rows.map((row) => `${row.proname}:${row.lanname}:${row.result}`),
-    extensions: extensionResult.rows.map((row) => row.extname),
+    functions: functionResult.rows.map((row) =>
+      functionKey(
+        row.name,
+        row.identity_arguments,
+        row.definition,
+        row.volatility,
+        row.security_definer,
+        row.leakproof,
+        row.strict,
+        row.config
+      )
+    ),
+    extensions: extensionResult.rows.map((row) =>
+      extensionKey(row.extname, row.schema_name)
+    ),
+    sequences: sequenceResult.rows.map((row) => sequenceKey(row)),
+    types: typeResult.rows.map((row) => `${row.name}:${row.type}`),
+    views: viewResult.rows.map((row) => `${row.name}:${row.kind}`),
   };
 }
 
@@ -525,9 +719,9 @@ export function compareSnapshots(actual: SchemaSnapshot, expected: SchemaSnapsho
     }
 
     compareSets(
-      `FK de ${tableName}`,
-      actualTable.foreignKeys.map((foreignKey) => foreignKeyKey(tableName, foreignKey)),
-      expectedTable.foreignKeys.map((foreignKey) => foreignKeyKey(tableName, foreignKey)),
+      `constraint de ${tableName}`,
+      actualTable.constraints,
+      expectedTable.constraints,
       problems
     );
   }
@@ -535,12 +729,10 @@ export function compareSnapshots(actual: SchemaSnapshot, expected: SchemaSnapsho
   compareSets('indice', actual.indexes, expected.indexes, problems);
   compareSets('trigger', actual.triggers, expected.triggers, problems);
   compareSets('funcion', actual.functions, expected.functions, problems);
-
-  for (const extension of expected.extensions) {
-    if (!actual.extensions.includes(extension)) {
-      problems.push(`extension faltante: ${extension}`);
-    }
-  }
+  compareSets('extension', actual.extensions, expected.extensions, problems);
+  compareSets('secuencia', actual.sequences, expected.sequences, problems);
+  compareSets('tipo', actual.types, expected.types, problems);
+  compareSets('vista o tabla foranea', actual.views, expected.views, problems);
 
   return problems;
 }

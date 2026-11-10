@@ -43,6 +43,10 @@ WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
+# El servicio `migrate` ejecuta este archivo. Si falta, la imagen no sirve para
+# desplegar el Cambio 10 y el build debe fallar aqui, no en produccion.
+RUN test -f /app/dist/migrations/cli.js
+
 # Uploads live outside the application tree and must be writable by `node`.
 RUN mkdir -p /data/uploads && chown -R node:node /data/uploads
 
