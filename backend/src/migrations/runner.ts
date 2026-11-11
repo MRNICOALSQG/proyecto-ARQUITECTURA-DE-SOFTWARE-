@@ -110,6 +110,145 @@ async function listUserTables(client: PoolClient): Promise<string[]> {
     .filter((tableName) => tableName !== SCHEMA_MIGRATIONS_TABLE);
 }
 
+// Que no haya tablas no significa que la base este vacia. Antes de ejecutar 001
+// hay que descartar funciones, agregados, secuencias, tipos, vistas, esquemas u
+// otros objetos que 001 podria sobrescribir. La tabla schema_migrations y sus
+// indices los crea el propio runner y no cuentan como objetos de usuario.
+async function assertDatabaseTrulyEmpty(client: PoolClient): Promise<void> {
+  const problems: string[] = [];
+
+  const schemaResult = await client.query<{ nspname: string }>(
+    `SELECT nspname
+       FROM pg_namespace
+      WHERE nspname !~ '^pg_'
+        AND nspname <> 'information_schema'
+      ORDER BY nspname`
+  );
+  for (const row of schemaResult.rows) {
+    if (row.nspname !== 'public') {
+      problems.push(`esquema inesperado: ${row.nspname}`);
+    }
+  }
+
+  const extensionResult = await client.query<{ extname: string }>(
+    `SELECT extname FROM pg_extension ORDER BY extname`
+  );
+  const allowedExtensions = new Set(['plpgsql', 'pgcrypto']);
+  for (const row of extensionResult.rows) {
+    if (!allowedExtensions.has(row.extname)) {
+      problems.push(`extension inesperada: ${row.extname}`);
+    }
+  }
+
+  // Tablas, particionadas, secuencias, vistas, vistas materializadas, tablas
+  // foraneas, indices y tipos compuestos.
+  const relationResult = await client.query<{
+    schema_name: string;
+    object_name: string;
+    kind: string;
+  }>(
+    `SELECT n.nspname AS schema_name,
+            c.relname AS object_name,
+            c.relkind::text AS kind
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname !~ '^pg_'
+        AND n.nspname <> 'information_schema'
+        AND c.relkind IN ('r', 'p', 'S', 'v', 'm', 'f', 'i', 'c', 'I')
+        AND NOT (n.nspname = 'public' AND c.relname = $1 AND c.relkind = 'r')
+        AND c.oid NOT IN (
+          SELECT i.indexrelid
+            FROM pg_index i
+            JOIN pg_class t ON t.oid = i.indrelid
+            JOIN pg_namespace tn ON tn.oid = t.relnamespace
+           WHERE tn.nspname = 'public' AND t.relname = $1
+        )
+        AND NOT EXISTS (
+          SELECT 1
+            FROM pg_depend d
+           WHERE d.classid = 'pg_class'::regclass
+             AND d.objid = c.oid
+             AND d.deptype = 'e'
+        )
+      ORDER BY n.nspname, c.relname`,
+    [SCHEMA_MIGRATIONS_TABLE]
+  );
+  for (const row of relationResult.rows) {
+    problems.push(
+      `objeto inesperado: ${row.schema_name}.${row.object_name} (${row.kind})`
+    );
+  }
+
+  // Funciones, procedimientos y agregados. Los objetos de extensiones (por
+  // ejemplo pgcrypto) se excluyen porque 001 los tolera con IF NOT EXISTS.
+  const routineResult = await client.query<{
+    schema_name: string;
+    object_name: string;
+    kind: string;
+  }>(
+    `SELECT n.nspname AS schema_name,
+            p.proname AS object_name,
+            p.prokind::text AS kind
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname !~ '^pg_'
+        AND n.nspname <> 'information_schema'
+        AND NOT EXISTS (
+          SELECT 1
+            FROM pg_depend d
+           WHERE d.classid = 'pg_proc'::regclass
+             AND d.objid = p.oid
+             AND d.deptype = 'e'
+        )
+      ORDER BY n.nspname, p.proname`
+  );
+  for (const row of routineResult.rows) {
+    problems.push(
+      `rutina inesperada: ${row.schema_name}.${row.object_name} (${row.kind})`
+    );
+  }
+
+  // Tipos independientes: los row types de tablas/vistas tienen typrelid != 0
+  // y los tipos array tienen typelem != 0, asi que no se cuentan aqui.
+  const typeResult = await client.query<{
+    schema_name: string;
+    object_name: string;
+    kind: string;
+  }>(
+    `SELECT n.nspname AS schema_name,
+            t.typname AS object_name,
+            t.typtype::text AS kind
+       FROM pg_type t
+       JOIN pg_namespace n ON n.oid = t.typnamespace
+      WHERE n.nspname !~ '^pg_'
+        AND n.nspname <> 'information_schema'
+        AND t.typrelid = 0
+        AND t.typelem = 0
+        AND NOT EXISTS (
+          SELECT 1
+            FROM pg_depend d
+           WHERE d.classid = 'pg_type'::regclass
+             AND d.objid = t.oid
+             AND d.deptype = 'e'
+        )
+      ORDER BY n.nspname, t.typname`
+  );
+  for (const row of typeResult.rows) {
+    problems.push(
+      `tipo inesperado: ${row.schema_name}.${row.object_name} (${row.kind})`
+    );
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      'La base no tiene tablas de usuario pero no esta vacia: contiene objetos ' +
+        'preexistentes que 001_esquema_inicial podria sobrescribir. No se ha ' +
+        'ejecutado ninguna migracion ni se ha registrado ningun baseline.\n' +
+        problems.map((problem) => `  - ${problem}`).join('\n')
+    );
+  }
+}
+
 // An existing database created by database/init.sql has the initial schema but
 // no migration history. Adopt it as baseline only after proving that its schema
 // matches 001 exactly. Nothing is executed against the existing tables.
@@ -244,6 +383,7 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<void
         await adoptInitialBaseline(client, baseline);
         pending = pending.slice(1);
       } else {
+        await assertDatabaseTrulyEmpty(client);
         console.log('Base vacia detectada. Se aplicara el esquema inicial.');
       }
     }

@@ -6,6 +6,8 @@ export interface ColumnSnapshot {
   maxLength: number | null;
   nullable: boolean;
   default: string | null;
+  /** Collation explicita; null si usa la del tipo/base de datos. */
+  collation: string | null;
 }
 
 export interface TableSnapshot {
@@ -13,6 +15,12 @@ export interface TableSnapshot {
   primaryKey: string[];
   /** Definiciones completas (pg_get_constraintdef) de todas las constraints de la tabla. */
   constraints: string[];
+  /** pg_class.relrowsecurity. */
+  rlsEnabled: boolean;
+  /** pg_class.relforcerowsecurity. */
+  rlsForced: boolean;
+  /** Politicas de pg_policy como claves canonicas. */
+  policies: string[];
 }
 
 export interface SchemaSnapshot {
@@ -20,6 +28,7 @@ export interface SchemaSnapshot {
   indexes: string[];
   triggers: string[];
   functions: string[];
+  aggregates: string[];
   extensions: string[];
   sequences: string[];
   types: string[];
@@ -33,9 +42,25 @@ function column(
   dataType: string,
   nullable: boolean,
   defaultValue: string | null,
-  maxLength: number | null = null
+  maxLength: number | null = null,
+  collation: string | null = null
 ): ColumnSnapshot {
-  return { name, dataType, maxLength, nullable, default: defaultValue };
+  return { name, dataType, maxLength, nullable, default: defaultValue, collation };
+}
+
+function table(
+  columns: ColumnSnapshot[],
+  primaryKey: string[],
+  constraints: string[]
+): TableSnapshot {
+  return {
+    columns,
+    primaryKey,
+    constraints,
+    rlsEnabled: false,
+    rlsForced: false,
+    policies: [],
+  };
 }
 
 // pg_get_functiondef() devuelve el cuerpo, los argumentos, el tipo de retorno,
@@ -56,8 +81,8 @@ $function$`;
 // explicit: baseline adoption must prove that an existing database really has
 // the initial schema before recording the migration as applied.
 const EXPECTED_TABLES: Record<string, TableSnapshot> = {
-  users: {
-    columns: [
+  users: table(
+    [
       column('id', 'uuid', false, 'gen_random_uuid()'),
       column('email', 'character varying', false, null, 255),
       column('password_hash', 'character varying', false, null, 255),
@@ -66,11 +91,11 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('created_at', 'timestamp with time zone', true, 'now()'),
       column('updated_at', 'timestamp with time zone', true, 'now()'),
     ],
-    primaryKey: ['id'],
-    constraints: ['p:PRIMARY KEY (id)', 'u:UNIQUE (email)'],
-  },
-  songs: {
-    columns: [
+    ['id'],
+    ['p:PRIMARY KEY (id)', 'u:UNIQUE (email)']
+  ),
+  songs: table(
+    [
       column('id', 'uuid', false, 'gen_random_uuid()'),
       column('user_id', 'uuid', false, null),
       column('title', 'character varying', false, null, 255),
@@ -83,14 +108,14 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('mime_type', 'character varying', true, "'audio/mpeg'", 100),
       column('uploaded_at', 'timestamp with time zone', true, 'now()'),
     ],
-    primaryKey: ['id'],
-    constraints: [
+    ['id'],
+    [
       'f:FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
       'p:PRIMARY KEY (id)',
-    ],
-  },
-  user_preferences: {
-    columns: [
+    ]
+  ),
+  user_preferences: table(
+    [
       column('user_id', 'uuid', false, null),
       column('background_type', 'character varying', true, "'solid'", 50),
       column('background_value', 'character varying', true, "'#131315'", 500),
@@ -105,62 +130,62 @@ const EXPECTED_TABLES: Record<string, TableSnapshot> = {
       column('background_repeat', 'character varying', true, "'no-repeat'", 50),
       column('updated_at', 'timestamp with time zone', true, 'now()'),
     ],
-    primaryKey: ['user_id'],
-    constraints: [
+    ['user_id'],
+    [
       'f:FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
       'p:PRIMARY KEY (user_id)',
-    ],
-  },
-  playlists: {
-    columns: [
+    ]
+  ),
+  playlists: table(
+    [
       column('id', 'uuid', false, 'gen_random_uuid()'),
       column('user_id', 'uuid', false, null),
       column('name', 'character varying', false, null, 255),
       column('cover_url', 'text', true, null),
       column('created_at', 'timestamp with time zone', true, 'now()'),
     ],
-    primaryKey: ['id'],
-    constraints: [
+    ['id'],
+    [
       'f:FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
       'p:PRIMARY KEY (id)',
-    ],
-  },
-  playlist_songs: {
-    columns: [
+    ]
+  ),
+  playlist_songs: table(
+    [
       column('playlist_id', 'uuid', false, null),
       column('song_id', 'uuid', false, null),
       column('added_at', 'timestamp with time zone', true, 'now()'),
     ],
-    primaryKey: ['playlist_id', 'song_id'],
-    constraints: [
+    ['playlist_id', 'song_id'],
+    [
       'f:FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE',
       'f:FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE',
       'p:PRIMARY KEY (playlist_id, song_id)',
-    ],
-  },
-  favorites: {
-    columns: [
+    ]
+  ),
+  favorites: table(
+    [
       column('user_id', 'uuid', false, null),
       column('song_id', 'uuid', false, null),
       column('created_at', 'timestamp with time zone', true, 'now()'),
     ],
-    primaryKey: ['user_id', 'song_id'],
-    constraints: [
+    ['user_id', 'song_id'],
+    [
       'f:FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE',
       'f:FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
       'p:PRIMARY KEY (user_id, song_id)',
-    ],
-  },
-  revoked_tokens: {
-    columns: [
+    ]
+  ),
+  revoked_tokens: table(
+    [
       column('id', 'integer', false, "nextval('revoked_tokens_id_seq')"),
       column('token_jti', 'character varying', false, null, 255),
       column('revoked_at', 'timestamp with time zone', true, 'now()'),
       column('expires_at', 'timestamp with time zone', false, null),
     ],
-    primaryKey: ['id'],
-    constraints: ['p:PRIMARY KEY (id)', 'u:UNIQUE (token_jti)'],
-  },
+    ['id'],
+    ['p:PRIMARY KEY (id)', 'u:UNIQUE (token_jti)']
+  ),
 };
 
 interface ExpectedIndex {
@@ -263,6 +288,7 @@ const EXPECTED_EXTENSIONS = ['pgcrypto:public', 'plpgsql:pg_catalog'];
 const EXPECTED_SEQUENCES = ['public:revoked_tokens_id_seq:1:1:2147483647:1:false:1'];
 const EXPECTED_TYPES: string[] = [];
 const EXPECTED_VIEWS: string[] = [];
+const EXPECTED_AGGREGATES: string[] = [];
 
 export function expectedSnapshot(): SchemaSnapshot {
   return {
@@ -272,6 +298,7 @@ export function expectedSnapshot(): SchemaSnapshot {
     ),
     triggers: [...EXPECTED_TRIGGERS],
     functions: [...EXPECTED_FUNCTIONS],
+    aggregates: [...EXPECTED_AGGREGATES],
     extensions: [...EXPECTED_EXTENSIONS],
     sequences: [...EXPECTED_SEQUENCES],
     types: [...EXPECTED_TYPES],
@@ -346,6 +373,95 @@ function extensionKey(name: string, schema: string): string {
   return `${name}:${schema}`;
 }
 
+interface AggregateRow {
+  schema_name: string;
+  name: string;
+  identity_arguments: string;
+  aggkind: string;
+  aggnumdirectargs: number;
+  transfn: string;
+  finalfn: string;
+  combinefn: string;
+  serialfn: string;
+  deserialfn: string;
+  mtransfn: string;
+  minvtransfn: string;
+  mfinalfn: string;
+  aggfinalextra: boolean;
+  aggmfinalextra: boolean;
+  aggfinalmodify: string;
+  aggmfinalmodify: string;
+  sortop: string;
+  transtype: string;
+  transspace: number;
+  mtranstype: string;
+  mtransspace: number;
+  initval: string | null;
+  minitval: string | null;
+  result_type: string;
+  volatility: string;
+  parallel: string;
+  strict: boolean;
+  security_definer: boolean;
+  leakproof: boolean;
+  config: string[] | null;
+}
+
+// PostgreSQL no expone un pg_get_aggregatedef(): la definicion se reconstruye a
+// partir de pg_aggregate y de las propiedades de pg_proc. El esquema esperado de
+// 001 no contiene agregados, por lo que cualquier agregado de usuario se rechaza.
+function aggregateKey(row: AggregateRow): string {
+  return [
+    `${row.schema_name}.${row.name}(${row.identity_arguments})`,
+    `kind=${row.aggkind}`,
+    `directargs=${row.aggnumdirectargs}`,
+    `transfn=${row.transfn}`,
+    `finalfn=${row.finalfn}`,
+    `combinefn=${row.combinefn}`,
+    `serialfn=${row.serialfn}`,
+    `deserialfn=${row.deserialfn}`,
+    `mtransfn=${row.mtransfn}`,
+    `minvtransfn=${row.minvtransfn}`,
+    `mfinalfn=${row.mfinalfn}`,
+    `finalextra=${row.aggfinalextra}`,
+    `mfinalextra=${row.aggmfinalextra}`,
+    `finalmodify=${row.aggfinalmodify}`,
+    `mfinalmodify=${row.aggmfinalmodify}`,
+    `sortop=${row.sortop}`,
+    `transtype=${row.transtype}`,
+    `transspace=${row.transspace}`,
+    `mtranstype=${row.mtranstype}`,
+    `mtransspace=${row.mtransspace}`,
+    `initval=${String(row.initval)}`,
+    `minitval=${String(row.minitval)}`,
+    `result=${row.result_type}`,
+    `volatile=${row.volatility}`,
+    `parallel=${row.parallel}`,
+    `strict=${row.strict}`,
+    `secdef=${row.security_definer}`,
+    `leakproof=${row.leakproof}`,
+    `config=${(row.config ?? []).join(',')}`,
+  ].join('|');
+}
+
+interface PolicyRow {
+  policy_name: string;
+  command: string;
+  permissive: boolean;
+  roles: string;
+  using_expression: string | null;
+  check_expression: string | null;
+}
+
+function policyKey(row: PolicyRow): string {
+  return (
+    `${row.policy_name}|cmd=${row.command}|permissive=${row.permissive}|` +
+    `roles=${row.roles}|` +
+    `using=${normalizeDefinition(row.using_expression ?? '')}|` +
+    `check=${normalizeDefinition(row.check_expression ?? '')}`
+  );
+}
+
 function sequenceKey(row: {
   schemaname: string;
   sequencename: string;
@@ -386,9 +502,11 @@ export async function takeSnapshot(
     character_maximum_length: number | null;
     is_nullable: string;
     column_default: string | null;
+    collation_schema: string | null;
+    collation_name: string | null;
   }>(
     `SELECT table_name, column_name, data_type, character_maximum_length,
-            is_nullable, column_default
+            is_nullable, column_default, collation_schema, collation_name
        FROM information_schema.columns
       WHERE table_schema = 'public'
       ORDER BY table_name, ordinal_position`
@@ -496,6 +614,102 @@ export async function takeSnapshot(
       ORDER BY p.proname, pg_get_function_identity_arguments(p.oid)`
   );
 
+  // pg_aggregate no tiene una funcion pg_get_aggregatedef(); se reconstruye la
+  // clave con la identidad, las funciones de transicion/finalizacion y el resto
+  // de propiedades de pg_aggregate y pg_proc.
+  const aggregateResult = await client.query<AggregateRow>(
+    `SELECT n.nspname AS schema_name,
+            p.proname AS name,
+            pg_get_function_identity_arguments(p.oid) AS identity_arguments,
+            a.aggkind::text AS aggkind,
+            a.aggnumdirectargs,
+            a.aggtransfn::regproc::text AS transfn,
+            a.aggfinalfn::regproc::text AS finalfn,
+            a.aggcombinefn::regproc::text AS combinefn,
+            a.aggserialfn::regproc::text AS serialfn,
+            a.aggdeserialfn::regproc::text AS deserialfn,
+            a.aggmtransfn::regproc::text AS mtransfn,
+            a.aggminvtransfn::regproc::text AS minvtransfn,
+            a.aggmfinalfn::regproc::text AS mfinalfn,
+            a.aggfinalextra,
+            a.aggmfinalextra,
+            a.aggfinalmodify::text AS aggfinalmodify,
+            a.aggmfinalmodify::text AS aggmfinalmodify,
+            CASE WHEN a.aggsortop = 0 THEN ''
+                 ELSE a.aggsortop::regoperator::text END AS sortop,
+            a.aggtranstype::regtype::text AS transtype,
+            a.aggtransspace AS transspace,
+            a.aggmtranstype::regtype::text AS mtranstype,
+            a.aggmtransspace AS mtransspace,
+            a.agginitval AS initval,
+            a.aggminitval AS minitval,
+            p.prorettype::regtype::text AS result_type,
+            p.provolatile::text AS volatility,
+            p.proparallel::text AS parallel,
+            p.proisstrict AS strict,
+            p.prosecdef AS security_definer,
+            p.proleakproof AS leakproof,
+            p.proconfig AS config
+       FROM pg_aggregate a
+       JOIN pg_proc p ON p.oid = a.aggfnoid
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND NOT EXISTS (
+          SELECT 1
+            FROM pg_depend d
+           WHERE d.classid = 'pg_proc'::regclass
+             AND d.objid = p.oid
+             AND d.deptype = 'e'
+        )
+      ORDER BY p.proname, pg_get_function_identity_arguments(p.oid)`
+  );
+
+  // RLS se compara por tabla. Las politicas se capturan con roles, comando,
+  // caracter permissive y expresiones USING / WITH CHECK completas.
+  const rlsResult = await client.query<{
+    table_name: string;
+    relrowsecurity: boolean;
+    relforcerowsecurity: boolean;
+  }>(
+    `SELECT c.relname AS table_name,
+            c.relrowsecurity,
+            c.relforcerowsecurity
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+      ORDER BY c.relname`
+  );
+
+  const policyResult = await client.query<{
+    table_name: string;
+    policy_name: string;
+    command: string;
+    permissive: boolean;
+    roles: string;
+    using_expression: string | null;
+    check_expression: string | null;
+  }>(
+    `SELECT c.relname AS table_name,
+            p.polname AS policy_name,
+            p.polcmd::text AS command,
+            p.polpermissive AS permissive,
+            COALESCE((
+              SELECT string_agg(
+                       CASE WHEN pr.oid = 0 THEN 'PUBLIC'
+                            ELSE COALESCE(r.rolname, pr.oid::text) END,
+                       ',' ORDER BY pr.ord)
+                FROM unnest(p.polroles) WITH ORDINALITY AS pr(oid, ord)
+                LEFT JOIN pg_roles r ON r.oid = pr.oid
+            ), '') AS roles,
+            pg_get_expr(p.polqual, p.polrelid) AS using_expression,
+            pg_get_expr(p.polwithcheck, p.polrelid) AS check_expression
+       FROM pg_policy p
+       JOIN pg_class c ON c.oid = p.polrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+      ORDER BY c.relname, p.polname`
+  );
+
   const extensionResult = await client.query<{ extname: string; schema_name: string }>(
     `SELECT e.extname, n.nspname AS schema_name
        FROM pg_extension e
@@ -548,7 +762,14 @@ export async function takeSnapshot(
 
   const tables: Record<string, TableSnapshot> = {};
   for (const tableName of tableNames) {
-    tables[tableName] = { columns: [], primaryKey: [], constraints: [] };
+    tables[tableName] = {
+      columns: [],
+      primaryKey: [],
+      constraints: [],
+      rlsEnabled: false,
+      rlsForced: false,
+      policies: [],
+    };
   }
 
   for (const row of columnResult.rows) {
@@ -562,6 +783,12 @@ export async function takeSnapshot(
       maxLength: row.character_maximum_length,
       nullable: row.is_nullable === 'YES',
       default: normalizeDefault(row.column_default),
+      // information_schema devuelve NULL cuando la columna usa la collation
+      // por defecto del tipo/base de datos; solo se materializa la explicita.
+      collation:
+        row.collation_name === null
+          ? null
+          : `${row.collation_schema ?? ''}.${row.collation_name}`,
     });
   }
 
@@ -578,6 +805,21 @@ export async function takeSnapshot(
       table.constraints.push(
         `${row.constraint_type}:${normalizeDefinition(row.definition)}`
       );
+    }
+  }
+
+  for (const row of rlsResult.rows) {
+    const table = tables[row.table_name];
+    if (table) {
+      table.rlsEnabled = row.relrowsecurity;
+      table.rlsForced = row.relforcerowsecurity;
+    }
+  }
+
+  for (const row of policyResult.rows) {
+    const table = tables[row.table_name];
+    if (table) {
+      table.policies.push(policyKey(row));
     }
   }
 
@@ -617,6 +859,7 @@ export async function takeSnapshot(
         row.config
       )
     ),
+    aggregates: aggregateResult.rows.map((row) => aggregateKey(row)),
     extensions: extensionResult.rows.map((row) =>
       extensionKey(row.extname, row.schema_name)
     ),
@@ -709,6 +952,12 @@ export function compareSnapshots(actual: SchemaSnapshot, expected: SchemaSnapsho
             `encontrado ${String(actualColumn.default)}`
         );
       }
+      if (actualColumn.collation !== expectedColumn.collation) {
+        problems.push(
+          `${prefix}: collation esperada ${String(expectedColumn.collation)}, ` +
+            `encontrada ${String(actualColumn.collation)}`
+        );
+      }
     }
 
     if (actualTable.primaryKey.join(',') !== expectedTable.primaryKey.join(',')) {
@@ -724,11 +973,31 @@ export function compareSnapshots(actual: SchemaSnapshot, expected: SchemaSnapsho
       expectedTable.constraints,
       problems
     );
+
+    if (actualTable.rlsEnabled !== expectedTable.rlsEnabled) {
+      problems.push(
+        `${tableName}: RLS esperado ${String(expectedTable.rlsEnabled)}, ` +
+          `encontrado ${String(actualTable.rlsEnabled)}`
+      );
+    }
+    if (actualTable.rlsForced !== expectedTable.rlsForced) {
+      problems.push(
+        `${tableName}: FORCE RLS esperado ${String(expectedTable.rlsForced)}, ` +
+          `encontrado ${String(actualTable.rlsForced)}`
+      );
+    }
+    compareSets(
+      `politica de ${tableName}`,
+      actualTable.policies,
+      expectedTable.policies,
+      problems
+    );
   }
 
   compareSets('indice', actual.indexes, expected.indexes, problems);
   compareSets('trigger', actual.triggers, expected.triggers, problems);
   compareSets('funcion', actual.functions, expected.functions, problems);
+  compareSets('agregado', actual.aggregates, expected.aggregates, problems);
   compareSets('extension', actual.extensions, expected.extensions, problems);
   compareSets('secuencia', actual.sequences, expected.sequences, problems);
   compareSets('tipo', actual.types, expected.types, problems);
