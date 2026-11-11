@@ -1,39 +1,14 @@
 import { Router, Request, Response } from 'express';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
-import { env } from '../config/env';
+import { createUploader } from '../shared/uploads';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
-const uploadDir = env.UPLOAD_DIR;
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const imgDir = path.join(uploadDir, 'images');
-    if (!fs.existsSync(imgDir)) {
-      fs.mkdirSync(imgDir, { recursive: true });
-    }
-    cb(null, imgDir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Formato de imagen no compatible'));
-    }
-  },
+const upload = createUploader({
+  folder: 'images',
+  allowedMimeTypes: (mimetype) => mimetype.startsWith('image/'),
+  maxFileSize: 5 * 1024 * 1024, // 5MB
+  invalidTypeMessage: 'Formato de imagen no compatible',
 });
 
 // POST /api/upload/image

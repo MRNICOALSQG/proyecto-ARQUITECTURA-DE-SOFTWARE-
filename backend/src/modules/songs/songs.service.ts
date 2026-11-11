@@ -2,7 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { HttpError } from '../../shared/http-error';
 import { sanitizeText } from '../../shared/sanitize';
-import { deleteUploadIfExists, resolveUploadPath } from '../../shared/uploads';
+import {
+  deleteUploadIfExists,
+  isUploadPublicPath,
+  resolveUploadPath,
+} from '../../shared/uploads';
 import * as songsRepository from './songs.repository';
 import type { Song } from './songs.repository';
 
@@ -67,17 +71,48 @@ export async function getOwnedSong(userId: string, songId: string): Promise<Song
 
 export async function getSongAudioFile(userId: string, songId: string): Promise<SongAudioFile> {
   const song = await getOwnedSong(userId, songId);
-  const absolutePath = resolveUploadPath(song.file_path);
 
-  if (!fs.existsSync(absolutePath)) {
+  let absolutePath: string;
+
+  try {
+    absolutePath = resolveUploadPath(song.file_path);
+  } catch {
+    // Una ruta corrupta en la base no debe escapar de UPLOAD_DIR; para el
+    // cliente se comporta igual que un archivo inexistente.
     throw new HttpError(404, 'Archivo no encontrado');
   }
 
-  return {
-    song,
-    absolutePath,
-    size: fs.statSync(absolutePath).size,
-  };
+  try {
+    const stats = await fs.promises.stat(absolutePath);
+
+    return {
+      song,
+      absolutePath,
+      size: stats.size,
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new HttpError(404, 'Archivo no encontrado');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Solo acepta `null`/`undefined` o una ruta canonica de imagen dentro de
+ * `/uploads/images/`. Es la defensa del servicio contra H-02, independiente de
+ * la validacion Zod del controlador.
+ */
+function normalizeCoverPath(coverPath?: string | null): string | null {
+  if (coverPath == null) {
+    return null;
+  }
+
+  if (!isUploadPublicPath(coverPath, 'images')) {
+    throw new HttpError(400, 'La portada debe ser una ruta válida dentro de /uploads/images');
+  }
+
+  return coverPath;
 }
 
 export async function updateSong(
@@ -90,12 +125,8 @@ export async function updateSong(
   }
 
   const title = sanitizeText(input.title);
-  const song = await songsRepository.updateTitleAndCover(
-    songId,
-    userId,
-    title,
-    input.coverPath || null
-  );
+  const coverPath = normalizeCoverPath(input.coverPath);
+  const song = await songsRepository.updateTitleAndCover(songId, userId, title, coverPath);
 
   if (!song) {
     throw new HttpError(404, 'Canción no encontrada');
@@ -107,8 +138,8 @@ export async function updateSong(
 export async function deleteSong(userId: string, songId: string): Promise<void> {
   const song = await getOwnedSong(userId, songId);
 
-  deleteUploadIfExists(song.file_path);
-  deleteUploadIfExists(song.cover_path);
+  await deleteUploadIfExists(song.file_path);
+  await deleteUploadIfExists(song.cover_path);
 
   await songsRepository.remove(song.id);
 }

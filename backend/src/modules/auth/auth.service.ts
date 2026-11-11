@@ -40,11 +40,12 @@ export async function register(input: {
   const salt = await bcrypt.genSalt(12);
   const passwordHash = await bcrypt.hash(input.password, salt);
 
-  const user = await authRepository.createUser(
-    input.email,
-    passwordHash,
-    input.username || input.email.split('@')[0]
-  );
+  // El username explicito y el fallback derivado del email pasan por la misma
+  // regla de saneamiento antes de persistirse.
+  const fallbackUsername = sanitizeText(input.email.split('@')[0]).trim();
+  const username = sanitizeText(input.username || fallbackUsername).trim();
+
+  const user = await authRepository.createUser(input.email, passwordHash, username);
 
   const { token } = generateToken(user.id);
   return { user: toPublicUser(user), token };
@@ -94,6 +95,6 @@ export async function updateProfile(
     throw new HttpError(400, 'Username es requerido');
   }
 
-  const username = sanitizeText(input.username);
+  const username = sanitizeText(input.username).trim();
   return authRepository.updateProfile(userId, username, input.avatarUrl || null);
 }

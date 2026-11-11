@@ -1,8 +1,28 @@
 import fs from 'fs';
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { AuthRequest } from '../../middleware/auth';
 import { sendControllerError, sendError } from '../../shared/http-response';
+import { cleanTextSchema } from '../../shared/sanitize';
+import { isUploadPublicPath } from '../../shared/uploads';
 import * as songsService from './songs.service';
+
+const updateSongSchema = z.object({
+  title: cleanTextSchema({
+    requiredMessage: 'El título es requerido',
+    min: 1,
+    max: 255,
+    minMessage: 'El título es requerido',
+    maxMessage: 'El título no puede superar los 255 caracteres',
+  }),
+  cover_path: z
+    .string()
+    .nullable()
+    .optional()
+    .refine((value) => value == null || isUploadPublicPath(value, 'images'), {
+      message: 'La portada debe ser una ruta válida dentro de /uploads/images',
+    }),
+});
 
 export async function listSongs(req: Request, res: Response): Promise<void> {
   try {
@@ -96,10 +116,17 @@ export async function streamSong(req: Request, res: Response): Promise<void> {
 
 export async function updateSong(req: Request, res: Response): Promise<void> {
   try {
+    const parsed = updateSongSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      sendError(res, 400, parsed.error.errors[0].message);
+      return;
+    }
+
     const user = (req as AuthRequest).user!;
     const song = await songsService.updateSong(user.id, req.params.id, {
-      title: req.body.title,
-      coverPath: req.body.cover_path,
+      title: parsed.data.title,
+      coverPath: parsed.data.cover_path,
     });
 
     res.json({ song });
