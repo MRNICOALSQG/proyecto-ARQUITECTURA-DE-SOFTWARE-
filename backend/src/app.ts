@@ -5,11 +5,11 @@ import passport from 'passport';
 import { env } from './config/env';
 import { pool } from './config/database';
 import { configurePassport } from './config/passport';
-import authRoutes from './routes/auth.routes';
-import songsRoutes from './routes/songs.routes';
-import preferencesRoutes from './routes/preferences.routes';
-import playlistsRoutes from './routes/playlists.routes';
-import favoritesRoutes from './routes/favorites.routes';
+import authRoutes from './modules/auth/auth.router';
+import songsRoutes from './modules/songs/songs.router';
+import preferencesRoutes from './modules/preferences/preferences.router';
+import playlistsRoutes from './modules/playlists/playlists.router';
+import favoritesRoutes from './modules/favorites/favorites.router';
 import uploadRoutes from './routes/upload.routes';
 
 export function createApp(): Express {
