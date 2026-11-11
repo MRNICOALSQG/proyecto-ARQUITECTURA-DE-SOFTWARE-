@@ -6,6 +6,11 @@
 
 name: rinne
 
+x-api-build: &api-build
+  context: ./backend
+  args:
+    APP_VERSION: ${APP_VERSION:-local}
+
 services:
   db:
     image: postgres:15-alpine
@@ -16,8 +21,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatoria y debe ser URL-safe (solo A-Za-z0-9._~-)}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # El esquema solo se ejecuta cuando el volumen de datos esta vacio.
-      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      # El esquema ya no se monta aqui: lo aplica el servicio `migrate` con las
+      # migraciones versionadas de database/migrations/.
     healthcheck:
       # DB_PASSWORD se inserta tal cual en DATABASE_URL; si no es URL-safe, el
       # parser de la API decodifica caracteres y la autenticacion falla. Marca
@@ -28,11 +33,26 @@ services:
       retries: 5
       start_period: 10s
 
+  migrate:
+    build: *api-build
+    # Servicio one-shot: aplica las migraciones pendientes y termina.
+    restart: "no"
+    command: ["node", "dist/migrations/cli.js"]
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rinne_user}:${DB_PASSWORD:?DB_PASSWORD es obligatoria y debe ser URL-safe (solo A-Za-z0-9._~-)}@db:5432/${POSTGRES_DB:-rinne}
+      MIGRATIONS_DIR: /app/database/migrations
+    volumes:
+      # Las migraciones viven fuera de la imagen; se montan en solo lectura.
+      - ./database/migrations:/app/database/migrations:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
-    build:
-      context: ./backend
-      args:
-        APP_VERSION: ${APP_VERSION:-local}
+    build: *api-build
     restart: unless-stopped
     env_file:
       - .env
@@ -50,6 +70,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     # El healthcheck de /api/health se hereda de backend/Dockerfile.
 
   web:

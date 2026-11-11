@@ -36,6 +36,10 @@ const envSchema = z.object({
   DB_POOL_MAX: z.coerce.number().int().positive().default(20),
   DB_IDLE_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(30_000),
   DB_CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(2_000),
+
+  // Solo lo usa el runner de migraciones. Si no se define, se busca
+  // ../database/migrations a partir del directorio de trabajo.
+  MIGRATIONS_DIR: z.string().min(1, 'MIGRATIONS_DIR no puede estar vacío').optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
