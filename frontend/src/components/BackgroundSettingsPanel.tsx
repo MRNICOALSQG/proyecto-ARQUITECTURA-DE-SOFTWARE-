@@ -1,7 +1,12 @@
 import { X, Image as ImageIcon, Sparkles, Upload, Check, Move } from 'lucide-react';
-import { usePreferencesStore } from '../stores/preferencesStore';
+import type { CSSProperties } from 'react';
+import { usePreferencesStore, type Preferences } from '../stores/preferencesStore';
 import { useState } from 'react';
 import { api, getImageUrl } from '../api/client';
+
+function isParticleType(value: string): value is Preferences['particles_type'] {
+  return ['none', 'snow', 'particles', 'dots', 'lines'].includes(value);
+}
 
 export function BackgroundSettingsPanel() {
   const { preferences, updatePreferences, applyPreferences, isBackgroundSettingsOpen, setIsBackgroundSettingsOpen } = usePreferencesStore();
@@ -65,6 +70,12 @@ export function BackgroundSettingsPanel() {
   ];
 
   const isImageBg = preferences.background_type === 'image' && preferences.background_value && !preferences.background_value.startsWith('#');
+  const backgroundObjectFit: CSSProperties['objectFit'] =
+    preferences.background_size === 'cover'
+      ? 'cover'
+      : preferences.background_size === 'contain'
+        ? 'contain'
+        : 'fill';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -139,7 +150,7 @@ export function BackgroundSettingsPanel() {
                     alt="Background preview" 
                     className="w-full h-full"
                     style={{
-                      objectFit: (preferences.background_size === 'cover' ? 'cover' : preferences.background_size === 'contain' ? 'contain' : 'fill') as any,
+                      objectFit: backgroundObjectFit,
                       objectPosition: preferences.background_position || 'center',
                     }}
                   />
@@ -210,7 +221,12 @@ export function BackgroundSettingsPanel() {
             
             <select 
               value={preferences.particles_type || 'none'}
-              onChange={(e) => updatePreferences({ particles_type: e.target.value as any })}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (isParticleType(value)) {
+                  updatePreferences({ particles_type: value });
+                }
+              }}
               className="w-full bg-surface-container border border-white/10 rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none mb-3"
             >
               <option value="none">Ninguno</option>

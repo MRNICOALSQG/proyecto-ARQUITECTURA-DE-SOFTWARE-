@@ -1,0 +1,141 @@
+name: Rin'ne CI/CD
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Backend tests and frontend checks
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: rinne_test_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rinne_test_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rinne_test_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+      - name: Run backend unit and integration tests
+        working-directory: backend
+        run: pnpm test
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Lint frontend
+        working-directory: frontend
+        run: pnpm lint
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm build
+
+  image-scan:
+    name: Build and scan container images
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          load: true
+          tags: rinne-api:${{ github.sha }}
+          build-args: APP_VERSION=${{ github.sha }}
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          load: true
+          tags: rinne-web:${{ github.sha }}
+      - name: Scan API image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: rinne-api:${{ github.sha }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL
+          exit-code: '1'
+      - name: Scan web image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: rinne-web:${{ github.sha }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL
+          exit-code: '1'
+
+  publish-ghcr:
+    name: Scan and publish images to GHCR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: image-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          load: true
+          tags: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:${{ github.sha }}
+          build-args: APP_VERSION=${{ github.sha }}
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          load: true
+          tags: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:${{ github.sha }}
+      - name: Scan API image before publication
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:${{ github.sha }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL
+          exit-code: '1'
+      - name: Scan web image before publication
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:${{ github.sha }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL
+          exit-code: '1'
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push scanned images
+        run: |
+          docker push ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:${{ github.sha }}
+          docker push ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:${{ github.sha }}

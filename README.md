@@ -250,8 +250,8 @@ Ajusta credenciales y nombres de contenedor a tu entorno:
 localmente:
 
 ```text
-ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:${TAG}
-ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--web:${TAG}
+ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:${TAG}
+ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:${TAG}
 ```
 
 Los nombres de GHCR deben ir en minusculas. El repositorio termina en guion, por
@@ -288,22 +288,24 @@ imagen construida desde un commit que incluya `dist/migrations/cli.js` (Cambio
 10). Una imagen publicada antes de ese cambio no contiene el runner y el
 servicio `migrate` fallara con un mensaje explicito; la API no arrancara.
 
-Mientras el pipeline del Cambio 14 no exista, construye y publica la imagen
-manualmente desde el commit desplegado:
+El pipeline de GitHub Actions construye y publica ambas imágenes en GHCR para cada commit de `main`, usando el SHA completo como etiqueta.
+Los Pull Requests ejecutan pruebas, lint, builds y escaneo Trivy, pero no publican.
+
+Para publicar manualmente una versión, usa el SHA del commit desplegado:
 
 ```bash
 TAG=v1.0.0
 
 # El Dockerfile falla si dist/migrations/cli.js no quedo en la imagen.
 docker build --build-arg APP_VERSION="$TAG" \
-  -t ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:"$TAG" ./backend
+  -t ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:"$TAG" ./backend
 
 # Verificacion explicita antes de publicar.
 docker run --rm --entrypoint sh \
-  ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:"$TAG" \
+  ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:"$TAG" \
   -c 'test -f dist/migrations/cli.js'
 
-docker push ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:"$TAG"
+docker push ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:"$TAG"
 ```
 
 Publica tambien la imagen web con el mismo `TAG` mediante el procedimiento
@@ -313,10 +315,7 @@ reutilices un `TAG` anterior al Cambio 10 para el servicio `migrate`.
 No uses `TAG=latest` en produccion: la etiqueta debe identificar la version que
 el pipeline publico para ese despliegue.
 
-El pipeline de GitHub Actions (Cambio 14, pendiente) sera el encargado de
-publicar esas imagenes en GHCR con la etiqueta correspondiente. Cuando se
-incorpore, debe construir la imagen de la API desde el mismo commit que compila
-`dist/migrations/cli.js` y publicarla antes de actualizar `compose.prod.yml`.
+El workflow `.github/workflows/ci-cd.yml` publica imágenes etiquetadas con el SHA completo únicamente en `push` a `main`. Las ejecuciones de Pull Request no publican imágenes y nunca despliegan en AWS.
 
 ## Desarrollo sin Docker
 
@@ -423,17 +422,18 @@ pnpm preview  # sirve el build de produccion
 
 ### Pruebas y verificaciones
 
-No existe una suite de pruebas automatizadas en el repositorio. Las
-verificaciones disponibles son:
+El workflow ejecuta la suite del backend contra PostgreSQL efímero, ESLint y
+build de TypeScript/Vite del frontend. Localmente, desde cada subproyecto:
 
 ```bash
-# Backend: typecheck (la etapa `test` del Dockerfile ejecuta este comando)
+# Backend: unitarias y de integración (requiere TEST_DATABASE_URL desechable)
 cd backend
-pnpm exec tsc --noEmit --declaration false --declarationMap false
+npm test
 
-# Frontend: empaquetado de produccion
+# Frontend: lint y build de producción
 cd frontend
-pnpm exec vite build
+pnpm lint
+pnpm build
 ```
 
 Para validar las imagenes y el stack:
@@ -605,16 +605,10 @@ las 7 tablas, indices, relaciones, trigger y la extension.
 
 ## Estado conocido de las comprobaciones
 
-Los siguientes fallos son preexistentes y no estan relacionados con la
-organizacion de dependencias ni con Docker Compose:
-
-- `frontend`: `pnpm build` falla en `tsc -b` por cinco variables e imports sin
-  usar en `Favorites.tsx` y `Player.tsx` (TS6133). El empaquetado puede validarse
-  con `pnpm exec vite build`.
-- `backend`: `pnpm build` falla con seis errores TS2742 porque
-  `declaration: true` no puede resolver tipos de Express bajo pnpm. La
-  compilacion puede validarse con
-  `pnpm exec tsc --declaration false --declarationMap false`.
+El backend se valida con sus pruebas unitarias y de integración en una base
+PostgreSQL desechable. La compilación Docker de producción desactiva la
+emisión de declaraciones TypeScript, que no se requieren en tiempo de ejecución.
+El frontend debe pasar ESLint, TypeScript y el build de Vite.
 
 ## Seguridad
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Image as ImageIcon } from 'lucide-react';
 import { api, getImageUrl } from '../api/client';
 
@@ -16,17 +16,10 @@ interface EditPlaylistModalProps {
 }
 
 export function EditPlaylistModal({ isOpen, onClose, playlist, onSuccess }: EditPlaylistModalProps) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState(playlist?.name ?? '');
   const [coverFile, setCoverFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(playlist?.cover_url ?? null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (playlist) {
-      setName(playlist.name);
-      setPreviewUrl(playlist.cover_url || null);
-    }
-  }, [playlist]);
 
   if (!isOpen || !playlist) return null;
 

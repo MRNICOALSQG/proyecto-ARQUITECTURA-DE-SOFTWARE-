@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import axios from 'axios';
 import { api } from '../api/client';
 import { useAuthStore } from '../stores/authStore';
 
@@ -23,8 +24,11 @@ export function LoginPage() {
       
       const res = await api.post(endpoint, payload);
       setAuth(res.data.token, res.data.user);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ocurrió un error');
+    } catch (err: unknown) {
+      const message = axios.isAxiosError<{ error?: string }>(err)
+        ? err.response?.data?.error
+        : undefined;
+      setError(message || 'Ocurrió un error');
     } finally {
       setLoading(false);
     }

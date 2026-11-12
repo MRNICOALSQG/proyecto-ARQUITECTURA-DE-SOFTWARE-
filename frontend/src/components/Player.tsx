@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Howl } from 'howler';
-import { SkipBack, SkipForward, Play, Pause, Settings as SettingsIcon, Volume2, Heart } from 'lucide-react';
+import { SkipBack, SkipForward, Play, Pause, Volume2, Heart } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import { usePreferencesStore } from '../stores/preferencesStore';
@@ -25,27 +25,38 @@ export function Player() {
   const soundRef = useRef<Howl | null>(null);
   const intervalRef = useRef<number | null>(null);
   const song = currentSong();
-  const setIsBackgroundSettingsOpen = usePreferencesStore((state) => state.setIsBackgroundSettingsOpen);
   const hudColor = usePreferencesStore((state) => state.preferences.hud_color);
-  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteSongId, setFavoriteSongId] = useState<string | null>(null);
+  const songId = song?.id;
+  const isFavorite = Boolean(songId && favoriteSongId === songId);
 
   // Check favorite status when song changes
   useEffect(() => {
-    if (!song) { setIsFavorite(false); return; }
-    api.get(`/favorites/check/${song.id}`)
-      .then(res => setIsFavorite(res.data.isFavorite))
-      .catch(() => setIsFavorite(false));
-  }, [song?.id]);
+    if (!songId) return;
+
+    let active = true;
+    api.get(`/favorites/check/${songId}`)
+      .then(res => {
+        if (active) setFavoriteSongId(res.data.isFavorite ? songId : null);
+      })
+      .catch(() => {
+        if (active) setFavoriteSongId(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [songId]);
 
   const toggleFavorite = async () => {
     if (!song) return;
     try {
       if (isFavorite) {
         await api.delete(`/favorites/${song.id}`);
-        setIsFavorite(false);
+        setFavoriteSongId(null);
       } else {
         await api.post(`/favorites/${song.id}`);
-        setIsFavorite(true);
+        setFavoriteSongId(song.id);
       }
     } catch (err) {
       console.error('Favorite toggle error:', err);

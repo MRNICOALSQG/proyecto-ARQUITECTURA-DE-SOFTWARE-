@@ -14,13 +14,11 @@ interface AddSongsToPlaylistPanelProps {
 export function AddSongsToPlaylistPanel({ isOpen, onClose, playlistId, existingSongIds, onSuccess }: AddSongsToPlaylistPanelProps) {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedIds(new Set());
-      setLoading(true);
       api.get('/songs')
         .then(res => setAllSongs(res.data.songs))
         .catch(console.error)
@@ -31,6 +29,11 @@ export function AddSongsToPlaylistPanel({ isOpen, onClose, playlistId, existingS
   if (!isOpen) return null;
 
   const availableSongs = allSongs.filter(s => !existingSongIds.includes(s.id));
+
+  const handleClose = () => {
+    setSelectedIds(new Set());
+    onClose();
+  };
 
   const toggleSong = (id: string) => {
     setSelectedIds(prev => {
@@ -49,7 +52,7 @@ export function AddSongsToPlaylistPanel({ isOpen, onClose, playlistId, existingS
         await api.post(`/playlists/${playlistId}/songs`, { song_id: songId });
       }
       onSuccess();
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       alert('Error añadiendo canciones');
@@ -68,7 +71,7 @@ export function AddSongsToPlaylistPanel({ isOpen, onClose, playlistId, existingS
             Añadir Canciones
           </h3>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 text-on-surface-variant hover:text-primary transition-colors rounded-full hover:bg-white/5"
           >
             <X className="w-5 h-5" />

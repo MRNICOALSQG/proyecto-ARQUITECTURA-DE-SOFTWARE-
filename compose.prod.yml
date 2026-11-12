@@ -4,8 +4,8 @@
 #
 # TAG es obligatoria: sin ella, Compose falla en lugar de desplegar `latest`.
 # Requiere que el pipeline publique las imagenes en GHCR:
-#   ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:<TAG>
-#   ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--web:<TAG>
+#   ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:<TAG>
+#   ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:<TAG>
 #
 # No hay secretos embebidos: todos los valores sensibles salen de .env.
 # El proyecto `rinne` y los volumenes son los mismos que en compose.yml.
@@ -41,7 +41,7 @@ services:
   migrate:
     # TAG debe corresponder a una imagen de API construida desde un commit que
     # incluya dist/migrations/cli.js (Cambio 10). Una imagen anterior no sirve.
-    image: ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:${TAG:?TAG es obligatoria}
+    image: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:${TAG:?TAG es obligatoria}
     # Servicio one-shot: aplica las migraciones pendientes y termina.
     restart: "no"
     command:
@@ -70,7 +70,7 @@ services:
         max-file: "3"
 
   api:
-    image: ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:${TAG:?TAG es obligatoria}
+    image: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:${TAG:?TAG es obligatoria}
     restart: unless-stopped
     env_file:
       - .env
@@ -96,7 +96,7 @@ services:
         max-file: "3"
 
   web:
-    image: ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--web:${TAG:?TAG es obligatoria}
+    image: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:${TAG:?TAG es obligatoria}
     restart: unless-stopped
     ports:
       - "8080:80"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Heart, ChevronLeft, ChevronRight, Music as MusicIcon, Play, Trash2 } from 'lucide-react';
+import { Heart, Music as MusicIcon, Play, Trash2 } from 'lucide-react';
 import { api, getImageUrl } from '../api/client';
 import { usePlayerStore, type Song } from '../stores/playerStore';
 
@@ -9,7 +9,7 @@ interface FavoritesProps {
 
 export function Favorites({ libraryOpen }: FavoritesProps) {
   const [favorites, setFavorites] = useState<Song[]>([]);
-  const { playSong, setQueue, currentIndex } = usePlayerStore();
+  const { playSong, setQueue } = usePlayerStore();
 
   const fetchFavorites = async () => {
     try {
@@ -21,7 +21,16 @@ export function Favorites({ libraryOpen }: FavoritesProps) {
   };
 
   useEffect(() => {
-    fetchFavorites();
+    let active = true;
+    api.get('/favorites')
+      .then(res => {
+        if (active) setFavorites(res.data.songs);
+      })
+      .catch(err => console.error('Error fetching favorites:', err));
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const removeFavorite = async (e: React.MouseEvent, songId: string) => {

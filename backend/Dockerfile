@@ -18,9 +18,8 @@ COPY src ./src
 # Declaration output is not needed at runtime, so it is disabled for the image.
 RUN pnpm build --declaration false --declarationMap false
 
-# ---- test: run the verification available in the repository ----
-# backend/package.json has no test script. The available check is the TypeScript
-# type check, using the same declaration override as the build stage.
+# ---- test: lightweight production-source type check ----
+# Full unit and PostgreSQL integration tests run in GitHub Actions.
 FROM build AS test
 RUN pnpm exec tsc --noEmit --declaration false --declarationMap false
 
