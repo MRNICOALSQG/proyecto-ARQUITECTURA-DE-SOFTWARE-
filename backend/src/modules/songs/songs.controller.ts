@@ -1,10 +1,12 @@
 import fs from 'fs';
 import { once } from 'events';
 import { pipeline } from 'stream/promises';
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { AuthRequest } from '../../middleware/auth';
-import { sendControllerError, sendError } from '../../shared/http-response';
+import { HttpError } from '../../shared/http-error';
+import { sendError } from '../../shared/http-response';
+import { logServerError } from '../../shared/logger';
 import { cleanTextSchema } from '../../shared/sanitize';
 import { isUploadPublicPath } from '../../shared/uploads';
 import * as songsService from './songs.service';
@@ -26,7 +28,15 @@ const updateSongSchema = z.object({
     }),
 });
 
-export async function listSongs(req: Request, res: Response): Promise<void> {
+const songParamsSchema = z.object({
+  id: z.string().uuid('Identificador de canción inválido'),
+});
+
+export async function listSongs(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
     const user = (req as AuthRequest).user!;
     const search = req.query.search as string | undefined;
@@ -34,15 +44,15 @@ export async function listSongs(req: Request, res: Response): Promise<void> {
 
     res.json({ songs });
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al obtener canciones',
-      logLabel: 'List songs error:',
-    });
+    next(error);
   }
 }
 
-export async function uploadSongs(req: Request, res: Response): Promise<void> {
+export async function uploadSongs(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
     const user = (req as AuthRequest).user!;
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];
@@ -61,17 +71,7 @@ export async function uploadSongs(req: Request, res: Response): Promise<void> {
 
     res.status(201).json({ songs });
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Formato no compatible')) {
-      console.error('Upload error:', error);
-      sendError(res, 400, error.message);
-      return;
-    }
-
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al subir la canción',
-      logLabel: 'Upload error:',
-    });
+    next(error);
   }
 }
 
@@ -93,11 +93,11 @@ async function openAudioStream(
 /**
  * Resuelve un fallo del stream sin intentar una segunda respuesta. Si las
  * cabeceras ya se enviaron, solo se corta la conexion; si no, se conserva el
- * contrato: 404 para archivos ausentes y 500 para el resto de errores.
+ * contrato: 404 para archivos ausentes y 500 generico para el resto.
  */
-function handleAudioStreamError(res: Response, error: unknown, logLabel: string): void {
+function handleAudioStreamError(req: Request, res: Response, error: unknown): void {
   if (res.headersSent) {
-    console.error(logLabel, error);
+    logServerError(req, 500, error);
 
     if (!res.writableEnded) {
       res.destroy();
@@ -108,7 +108,7 @@ function handleAudioStreamError(res: Response, error: unknown, logLabel: string)
 
   if (res.destroyed) {
     // El cliente cerro la conexion antes de abrir el archivo.
-    console.error(logLabel, error);
+    logServerError(req, 500, error);
     return;
   }
 
@@ -117,19 +117,38 @@ function handleAudioStreamError(res: Response, error: unknown, logLabel: string)
     return;
   }
 
-  sendControllerError(res, error, {
-    status: 500,
-    message: 'Error al reproducir la canción',
-    logLabel,
-  });
+  if (error instanceof HttpError) {
+    if (error.status >= 500) {
+      logServerError(req, error.status, error);
+    }
+
+    sendError(res, error.status, error.message);
+    return;
+  }
+
+  logServerError(req, 500, error);
+  sendError(res, 500, 'Error interno del servidor');
 }
 
-export async function streamSong(req: Request, res: Response): Promise<void> {
+export async function streamSong(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  // La validacion ocurre antes de abrir el stream: aun se puede delegar al
+  // middleware central sin riesgo de enviar una segunda respuesta.
+  const parsedParams = songParamsSchema.safeParse(req.params);
+
+  if (!parsedParams.success) {
+    next(parsedParams.error);
+    return;
+  }
+
   try {
     const user = (req as AuthRequest).user!;
     const { song, absolutePath, size } = await songsService.getSongAudioFile(
       user.id,
-      req.params.id
+      parsedParams.data.id
     );
 
     const range = req.headers.range;
@@ -158,46 +177,42 @@ export async function streamSong(req: Request, res: Response): Promise<void> {
     });
     await pipeline(stream, res);
   } catch (error) {
-    handleAudioStreamError(res, error, 'Stream error:');
+    handleAudioStreamError(req, res, error);
   }
 }
 
-export async function updateSong(req: Request, res: Response): Promise<void> {
+export async function updateSong(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
-    const parsed = updateSongSchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      sendError(res, 400, parsed.error.errors[0].message);
-      return;
-    }
-
+    const input = updateSongSchema.parse(req.body);
+    const { id } = songParamsSchema.parse(req.params);
     const user = (req as AuthRequest).user!;
-    const song = await songsService.updateSong(user.id, req.params.id, {
-      title: parsed.data.title,
-      coverPath: parsed.data.cover_path,
+    const song = await songsService.updateSong(user.id, id, {
+      title: input.title,
+      coverPath: input.cover_path,
     });
 
     res.json({ song });
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al actualizar la canción',
-      logLabel: 'Update error:',
-    });
+    next(error);
   }
 }
 
-export async function deleteSong(req: Request, res: Response): Promise<void> {
+export async function deleteSong(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
+    const { id } = songParamsSchema.parse(req.params);
     const user = (req as AuthRequest).user!;
-    await songsService.deleteSong(user.id, req.params.id);
+    await songsService.deleteSong(user.id, id);
 
     res.json({ message: 'Canción eliminada correctamente' });
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al eliminar la canción',
-      logLabel: 'Delete error:',
-    });
+    next(error);
   }
 }

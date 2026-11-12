@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { HttpError } from '../../shared/http-error';
+import { HttpError, NoEncontrado } from '../../shared/http-error';
 import { sanitizeText } from '../../shared/sanitize';
 import {
   deleteUploadIfExists,
@@ -63,7 +63,7 @@ export async function getOwnedSong(userId: string, songId: string): Promise<Song
   const song = await songsRepository.findByIdAndUser(songId, userId);
 
   if (!song) {
-    throw new HttpError(404, 'Canción no encontrada');
+    throw new NoEncontrado('Canción no encontrada');
   }
 
   return song;
@@ -79,7 +79,7 @@ export async function getSongAudioFile(userId: string, songId: string): Promise<
   } catch {
     // Una ruta corrupta en la base no debe escapar de UPLOAD_DIR; para el
     // cliente se comporta igual que un archivo inexistente.
-    throw new HttpError(404, 'Archivo no encontrado');
+    throw new NoEncontrado('Archivo no encontrado');
   }
 
   try {
@@ -92,7 +92,7 @@ export async function getSongAudioFile(userId: string, songId: string): Promise<
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new HttpError(404, 'Archivo no encontrado');
+      throw new NoEncontrado('Archivo no encontrado');
     }
     throw error;
   }
@@ -129,7 +129,7 @@ export async function updateSong(
   const song = await songsRepository.updateTitleAndCover(songId, userId, title, coverPath);
 
   if (!song) {
-    throw new HttpError(404, 'Canción no encontrada');
+    throw new NoEncontrado('Canción no encontrada');
   }
 
   return song;

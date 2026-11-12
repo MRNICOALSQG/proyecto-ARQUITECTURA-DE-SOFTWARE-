@@ -1,10 +1,11 @@
-import express, { Express, NextFunction, Request, Response } from 'express';
+import express, { Express } from 'express';
 import cors from 'cors';
 import path from 'path';
 import passport from 'passport';
 import { env } from './config/env';
 import { pool } from './config/database';
 import { configurePassport } from './config/passport';
+import { errorHandler } from './middleware/errores';
 import authRoutes from './modules/auth/auth.router';
 import songsRoutes from './modules/songs/songs.router';
 import preferencesRoutes from './modules/preferences/preferences.router';
@@ -52,21 +53,7 @@ export function createApp(): Express {
   });
 
   // Global error handler
-  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    if (res.headersSent) {
-      return next(err);
-    }
-
-    const error = err as { status?: number; statusCode?: number };
-    const candidate = error.status ?? error.statusCode;
-    const status =
-      typeof candidate === 'number' && candidate >= 400 && candidate <= 599 ? candidate : 500;
-
-    console.error('Unhandled error:', err);
-    res
-      .status(status)
-      .json({ error: status === 500 ? 'Error interno del servidor' : 'Solicitud invalida' });
-  });
+  app.use(errorHandler);
 
   return app;
 }

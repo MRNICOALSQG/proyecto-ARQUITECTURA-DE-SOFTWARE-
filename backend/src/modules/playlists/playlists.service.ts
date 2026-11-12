@@ -1,5 +1,6 @@
-import { HttpError } from '../../shared/http-error';
+import { HttpError, NoEncontrado } from '../../shared/http-error';
 import { sanitizeText } from '../../shared/sanitize';
+import * as songsRepository from '../songs/songs.repository';
 import * as playlistsRepository from './playlists.repository';
 import type { Playlist } from './playlists.repository';
 import type { Song } from '../songs/songs.repository';
@@ -20,7 +21,7 @@ export async function assertPlaylistOwner(playlistId: string, userId: string): P
   const exists = await playlistsRepository.existsForUser(playlistId, userId);
 
   if (!exists) {
-    throw new HttpError(404, 'Playlist no encontrada');
+    throw new NoEncontrado('Playlist no encontrada');
   }
 }
 
@@ -40,27 +41,37 @@ export async function createPlaylist(
   return playlistsRepository.create(userId, name, input.coverUrl || null);
 }
 
-// Se conserva el comportamiento historico: si la playlist no existe o no
-// pertenece al usuario, la respuesta sigue siendo 200 y el controlador devuelve
-// `{}` al serializar un `playlist` indefinido.
 export async function updatePlaylist(
   userId: string,
   playlistId: string,
   input: PlaylistInput
-): Promise<Playlist | undefined> {
+): Promise<Playlist> {
   if (!input.name) {
     throw new HttpError(400, 'El nombre es requerido');
   }
 
   const name = sanitizeText(input.name);
-  return playlistsRepository.update(playlistId, userId, name, input.coverUrl || null);
+  const playlist = await playlistsRepository.update(
+    playlistId,
+    userId,
+    name,
+    input.coverUrl || null
+  );
+
+  // Un UPDATE que no devuelve fila significa que la playlist no existe o no
+  // pertenece al usuario: el cliente recibe 404 en lugar de un 200 con `{}`.
+  if (!playlist) {
+    throw new NoEncontrado('Playlist no encontrada');
+  }
+
+  return playlist;
 }
 
 export async function deletePlaylist(userId: string, playlistId: string): Promise<void> {
   const deleted = await playlistsRepository.remove(playlistId, userId);
 
   if (!deleted) {
-    throw new HttpError(404, 'Playlist no encontrada');
+    throw new NoEncontrado('Playlist no encontrada');
   }
 }
 
@@ -78,6 +89,13 @@ export async function addSongToPlaylist(
   songId: string
 ): Promise<void> {
   await assertPlaylistOwner(playlistId, userId);
+
+  // Referencia inexistente -> 404 en lugar del error de clave foranea (500).
+  // La propiedad de la cancion corresponde al Cambio 8.
+  if (!(await songsRepository.exists(songId))) {
+    throw new NoEncontrado('Canción no encontrada');
+  }
+
   await playlistsRepository.addSong(playlistId, songId);
 }
 

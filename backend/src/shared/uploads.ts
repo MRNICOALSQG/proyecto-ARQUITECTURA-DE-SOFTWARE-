@@ -1,11 +1,30 @@
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
+import { RequestHandler } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { env } from '../config/env';
 import { HttpError } from './http-error';
 
 const UPLOAD_URL_PREFIX = '/uploads/';
+
+/**
+ * Error tipado para rechazos del `fileFilter` (MIME no permitido). Permite al
+ * middleware central responder 400 sin confundirlo con un fallo de disco.
+ */
+export class UploadFileTypeError extends Error {
+  readonly status = 400;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'UploadFileTypeError';
+  }
+}
+
+export interface UploadMiddleware {
+  single(field: string): RequestHandler;
+  array(field: string, maxCount?: number): RequestHandler;
+}
 
 export interface CreateUploaderOptions {
   /** Subdirectorio de `UPLOAD_DIR` donde se guardan los archivos. */
@@ -140,7 +159,7 @@ export async function deleteUploadIfExists(
  * creacion asincrona del directorio, el nombre UUID y el filtro de tipos para
  * que canciones e imagenes solo declaren sus diferencias legitimas.
  */
-export function createUploader(options: CreateUploaderOptions) {
+export function createUploader(options: CreateUploaderOptions): UploadMiddleware {
   const { folder, allowedMimeTypes, maxFileSize, invalidTypeMessage } = options;
 
   const storage = multer.diskStorage({
@@ -157,7 +176,7 @@ export function createUploader(options: CreateUploaderOptions) {
     },
   });
 
-  return multer({
+  const upload = multer({
     storage,
     limits: {
       fileSize: maxFileSize,
@@ -172,7 +191,33 @@ export function createUploader(options: CreateUploaderOptions) {
         return;
       }
 
-      cb(new Error(invalidTypeMessage));
+      cb(new UploadFileTypeError(invalidTypeMessage));
     },
   });
+
+  const maxFileSizeMb = Math.round(maxFileSize / (1024 * 1024));
+
+  // Multer no incluye el limite en `MulterError`, asi que se anota el mensaje
+  // especifico de este uploader antes de delegar en el middleware central.
+  // El resto de errores (permisos, disco lleno) se propagan sin modificarse.
+  const withLimitMessage =
+    (middleware: RequestHandler): RequestHandler =>
+    (req, res, next) => {
+      try {
+        middleware(req, res, (error?: unknown) => {
+          if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+            error.message = `El archivo excede el tamaño máximo de ${maxFileSizeMb}MB`;
+          }
+
+          next(error);
+        });
+      } catch (error) {
+        next(error);
+      }
+    };
+
+  return {
+    single: (field) => withLimitMessage(upload.single(field)),
+    array: (field, maxCount) => withLimitMessage(upload.array(field, maxCount)),
+  };
 }

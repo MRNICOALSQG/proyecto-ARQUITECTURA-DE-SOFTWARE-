@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { decodeToken, generateToken } from '../../middleware/auth';
-import { HttpError } from '../../shared/http-error';
+import { HttpError, NoEncontrado } from '../../shared/http-error';
 import { sanitizeText } from '../../shared/sanitize';
 import * as authRepository from './auth.repository';
 import type { UserRecord, UserWithPassword } from './auth.repository';
@@ -90,11 +90,19 @@ export async function logout(authorizationHeader?: string): Promise<void> {
 export async function updateProfile(
   userId: string,
   input: { username?: string; avatarUrl?: string | null }
-): Promise<UserRecord | undefined> {
+): Promise<UserRecord> {
   if (!input.username) {
     throw new HttpError(400, 'Username es requerido');
   }
 
   const username = sanitizeText(input.username).trim();
-  return authRepository.updateProfile(userId, username, input.avatarUrl || null);
+  const user = await authRepository.updateProfile(userId, username, input.avatarUrl || null);
+
+  // El usuario autenticado puede haber sido eliminado entre la verificacion del
+  // token y el UPDATE: se responde 404 en lugar de un 200 con `user` indefinido.
+  if (!user) {
+    throw new NoEncontrado('Usuario no encontrado');
+  }
+
+  return user;
 }
