@@ -44,12 +44,6 @@ export async function findByIdAndUser(id: string, userId: string): Promise<Song 
   return result.rows[0];
 }
 
-/** Comprueba existencia sin exigir propiedad: la autorizacion es del Cambio 8. */
-export async function exists(id: string): Promise<boolean> {
-  const result = await query('SELECT id FROM songs WHERE id = $1', [id]);
-  return result.rows.length > 0;
-}
-
 export async function insert(input: NewSong): Promise<Song> {
   const result = await query(
     `INSERT INTO songs (user_id, title, artist, album, duration_seconds, file_path, file_size, mime_type)

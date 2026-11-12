@@ -20,11 +20,44 @@ export async function isFavorite(userId: string, songId: string): Promise<boolea
   return result.rows.length > 0;
 }
 
-export async function add(userId: string, songId: string): Promise<void> {
-  await query(
-    'INSERT INTO favorites (user_id, song_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+export interface AddFavoriteResult {
+  songExists: boolean;
+  songOwnerId: string | null;
+}
+
+/**
+ * Inserta el favorito solo cuando la cancion existe y pertenece al usuario.
+ *
+ * La comprobacion y el INSERT se ejecutan en una sola sentencia para que la
+ * propiedad no pueda quedar obsoleta entre ambas. `FOR KEY SHARE` impide que la
+ * cancion se elimine mientras se crea la referencia. `ON CONFLICT DO NOTHING`
+ * conserva el comportamiento previo ante favoritos duplicados.
+ */
+export async function addIfOwned(
+  userId: string,
+  songId: string
+): Promise<AddFavoriteResult> {
+  const result = await query(
+    `WITH target_song AS (
+       SELECT id, user_id FROM songs WHERE id = $2 FOR KEY SHARE
+     ), inserted AS (
+       INSERT INTO favorites (user_id, song_id)
+       SELECT $1, id FROM target_song WHERE user_id = $1
+       ON CONFLICT DO NOTHING
+       RETURNING 1
+     )
+     SELECT
+       EXISTS (SELECT 1 FROM target_song) AS song_exists,
+       (SELECT user_id FROM target_song) AS song_owner_id,
+       EXISTS (SELECT 1 FROM inserted) AS inserted`,
     [userId, songId]
   );
+
+  const row = result.rows[0];
+  return {
+    songExists: row.song_exists,
+    songOwnerId: row.song_owner_id ?? null,
+  };
 }
 
 export async function remove(userId: string, songId: string): Promise<void> {

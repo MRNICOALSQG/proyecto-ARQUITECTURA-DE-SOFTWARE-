@@ -1,6 +1,5 @@
 import { HttpError, NoEncontrado } from '../../shared/http-error';
 import { sanitizeText } from '../../shared/sanitize';
-import * as songsRepository from '../songs/songs.repository';
 import * as playlistsRepository from './playlists.repository';
 import type { Playlist } from './playlists.repository';
 import type { Song } from '../songs/songs.repository';
@@ -11,11 +10,13 @@ export interface PlaylistInput {
 }
 
 /**
- * Unica comprobacion de pertenencia de playlists.
+ * Comprobacion de pertenencia para operaciones que leen o eliminan canciones
+ * de una playlist.
  *
- * Las tres operaciones sobre canciones de una playlist (listar, agregar y
- * quitar) y cualquier futura operacion deben pasar por aqui en lugar de repetir
- * la consulta `SELECT ... WHERE id = $1 AND user_id = $2`.
+ * Agregar canciones usa `addSongIfOwned`, que resuelve la pertenencia en la
+ * misma sentencia que el INSERT para no dejar una ventana entre la comprobacion
+ * y la insercion. Cualquier otra operacion debe pasar por aqui en lugar de
+ * repetir la consulta `SELECT ... WHERE id = $1 AND user_id = $2`.
  */
 export async function assertPlaylistOwner(playlistId: string, userId: string): Promise<void> {
   const exists = await playlistsRepository.existsForUser(playlistId, userId);
@@ -88,15 +89,23 @@ export async function addSongToPlaylist(
   playlistId: string,
   songId: string
 ): Promise<void> {
-  await assertPlaylistOwner(playlistId, userId);
+  const result = await playlistsRepository.addSongIfOwned(userId, playlistId, songId);
+
+  // La consulta filtra la playlist por propietario: una playlist ajena se
+  // trata igual que una inexistente para no revelar informacion privada.
+  if (!result.playlistExists) {
+    throw new NoEncontrado('Playlist no encontrada');
+  }
 
   // Referencia inexistente -> 404 en lugar del error de clave foranea (500).
-  // La propiedad de la cancion corresponde al Cambio 8.
-  if (!(await songsRepository.exists(songId))) {
+  if (!result.songExists) {
     throw new NoEncontrado('Canción no encontrada');
   }
 
-  await playlistsRepository.addSong(playlistId, songId);
+  // La cancion existe pero no es del usuario autenticado.
+  if (result.songOwnerId !== userId) {
+    throw new HttpError(403, 'No autorizado para usar esta canción');
+  }
 }
 
 export async function removeSongFromPlaylist(
