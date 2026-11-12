@@ -68,11 +68,55 @@ export async function findSongs(playlistId: string): Promise<Song[]> {
   return result.rows;
 }
 
-export async function addSong(playlistId: string, songId: string): Promise<void> {
-  await query(
-    'INSERT INTO playlist_songs (playlist_id, song_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-    [playlistId, songId]
+export interface AddSongResult {
+  playlistExists: boolean;
+  songExists: boolean;
+  songOwnerId: string | null;
+}
+
+/**
+ * Inserta la cancion en la playlist solo cuando la playlist pertenece al
+ * usuario y la cancion tambien es suya.
+ *
+ * Playlist y cancion se resuelven en la misma sentencia que el INSERT para
+ * evitar una ventana entre la comprobacion de propiedad y la insercion.
+ * `FOR KEY SHARE` protege ambas filas frente a borrados concurrentes y
+ * `ON CONFLICT DO NOTHING` conserva el comportamiento ante duplicados.
+ * La playlist se filtra por `user_id`, de modo que una playlist ajena se
+ * comporta igual que una inexistente y no revela informacion privada.
+ */
+export async function addSongIfOwned(
+  userId: string,
+  playlistId: string,
+  songId: string
+): Promise<AddSongResult> {
+  const result = await query(
+    `WITH target_playlist AS (
+       SELECT id FROM playlists WHERE id = $1 AND user_id = $3 FOR KEY SHARE
+     ), target_song AS (
+       SELECT id, user_id FROM songs WHERE id = $2 FOR KEY SHARE
+     ), inserted AS (
+       INSERT INTO playlist_songs (playlist_id, song_id)
+       SELECT p.id, s.id
+       FROM target_playlist p, target_song s
+       WHERE s.user_id = $3
+       ON CONFLICT DO NOTHING
+       RETURNING 1
+     )
+     SELECT
+       EXISTS (SELECT 1 FROM target_playlist) AS playlist_exists,
+       EXISTS (SELECT 1 FROM target_song) AS song_exists,
+       (SELECT user_id FROM target_song) AS song_owner_id,
+       EXISTS (SELECT 1 FROM inserted) AS inserted`,
+    [playlistId, songId, userId]
   );
+
+  const row = result.rows[0];
+  return {
+    playlistExists: row.playlist_exists,
+    songExists: row.song_exists,
+    songOwnerId: row.song_owner_id ?? null,
+  };
 }
 
 export async function removeSong(playlistId: string, songId: string): Promise<void> {
