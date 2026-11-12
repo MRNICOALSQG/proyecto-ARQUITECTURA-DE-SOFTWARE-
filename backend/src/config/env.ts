@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import { z } from 'zod';
@@ -8,9 +7,9 @@ import { z } from 'zod';
 const backendRoot = path.resolve(__dirname, '..', '..');
 const envFile = path.join(backendRoot, '.env');
 
-if (fs.existsSync(envFile)) {
-  dotenv.config({ path: envFile });
-}
+// dotenv no falla si el archivo no existe; el esquema de abajo valida el
+// resultado y conserva el comportamiento ante variables ausentes.
+dotenv.config({ path: envFile });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

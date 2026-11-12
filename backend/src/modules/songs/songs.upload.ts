@@ -1,9 +1,7 @@
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { NextFunction, Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
 import { env } from '../../config/env';
+import { createUploader } from '../../shared/uploads';
 
 const ALLOWED_MIME_TYPES = [
   'audio/mpeg',
@@ -20,32 +18,11 @@ const ALLOWED_MIME_TYPES = [
   'audio/x-m4a',
 ];
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const songsDir = path.join(env.UPLOAD_DIR, 'songs');
-    if (!fs.existsSync(songsDir)) {
-      fs.mkdirSync(songsDir, { recursive: true });
-    }
-    cb(null, songsDir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  },
-});
-
-export const uploadSongFiles = multer({
-  storage,
-  limits: {
-    fileSize: env.MAX_FILE_SIZE,
-  },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Formato no compatible. Usa MP3, FLAC, OGG o WAV'));
-    }
-  },
+export const uploadSongFiles = createUploader({
+  folder: 'songs',
+  allowedMimeTypes: ALLOWED_MIME_TYPES,
+  maxFileSize: env.MAX_FILE_SIZE,
+  invalidTypeMessage: 'Formato no compatible. Usa MP3, FLAC, OGG o WAV',
 });
 
 /** Traduce los errores de multer al contrato de error de la API. */

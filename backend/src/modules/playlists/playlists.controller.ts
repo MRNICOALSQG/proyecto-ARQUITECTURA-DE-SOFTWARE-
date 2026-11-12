@@ -1,7 +1,20 @@
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { AuthRequest } from '../../middleware/auth';
-import { sendControllerError } from '../../shared/http-response';
+import { sendControllerError, sendError } from '../../shared/http-response';
+import { cleanTextSchema } from '../../shared/sanitize';
 import * as playlistsService from './playlists.service';
+
+const playlistSchema = z.object({
+  name: cleanTextSchema({
+    requiredMessage: 'El nombre es requerido',
+    min: 1,
+    max: 255,
+    minMessage: 'El nombre es requerido',
+    maxMessage: 'El nombre no puede superar los 255 caracteres',
+  }),
+  cover_url: z.string().nullable().optional(),
+});
 
 export async function listPlaylists(req: Request, res: Response): Promise<void> {
   try {
@@ -20,10 +33,17 @@ export async function listPlaylists(req: Request, res: Response): Promise<void> 
 
 export async function createPlaylist(req: Request, res: Response): Promise<void> {
   try {
+    const parsed = playlistSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      sendError(res, 400, parsed.error.errors[0].message);
+      return;
+    }
+
     const user = (req as AuthRequest).user!;
     const playlist = await playlistsService.createPlaylist(user.id, {
-      name: req.body.name,
-      coverUrl: req.body.cover_url,
+      name: parsed.data.name,
+      coverUrl: parsed.data.cover_url,
     });
 
     res.status(201).json({ playlist });
@@ -37,10 +57,17 @@ export async function createPlaylist(req: Request, res: Response): Promise<void>
 
 export async function updatePlaylist(req: Request, res: Response): Promise<void> {
   try {
+    const parsed = playlistSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      sendError(res, 400, parsed.error.errors[0].message);
+      return;
+    }
+
     const user = (req as AuthRequest).user!;
     const playlist = await playlistsService.updatePlaylist(user.id, req.params.id, {
-      name: req.body.name,
-      coverUrl: req.body.cover_url,
+      name: parsed.data.name,
+      coverUrl: parsed.data.cover_url,
     });
 
     res.json({ playlist });

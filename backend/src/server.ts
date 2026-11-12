@@ -1,9 +1,8 @@
-import fs from 'fs';
 import http from 'http';
-import path from 'path';
 import app from './app';
 import { env } from './config/env';
 import { pool } from './config/database';
+import { ensureUploadDirectory } from './shared/uploads';
 
 const UPLOAD_SUBDIRECTORIES = ['songs', 'covers', 'images'] as const;
 const DB_RETRY_ATTEMPTS = 5;
@@ -13,11 +12,10 @@ let httpServer: http.Server | null = null;
 let shuttingDown = false;
 
 // Create the uploads tree (root + one directory per asset type).
-function ensureUploadDirectories(): void {
-  fs.mkdirSync(env.UPLOAD_DIR, { recursive: true });
-  for (const directory of UPLOAD_SUBDIRECTORIES) {
-    fs.mkdirSync(path.join(env.UPLOAD_DIR, directory), { recursive: true });
-  }
+async function ensureUploadDirectories(): Promise<void> {
+  await Promise.all(
+    UPLOAD_SUBDIRECTORIES.map((directory) => ensureUploadDirectory(directory))
+  );
 }
 
 function delay(ms: number): Promise<void> {
@@ -57,7 +55,7 @@ function listen(): Promise<http.Server> {
 }
 
 export async function startServer(): Promise<http.Server> {
-  ensureUploadDirectories();
+  await ensureUploadDirectories();
   await waitForDatabase();
   httpServer = await listen();
   console.log(`Rin'ne Backend running on http://localhost:${env.PORT}`);

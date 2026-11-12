@@ -2,17 +2,35 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { AuthRequest } from '../../middleware/auth';
 import { sendControllerError, sendError } from '../../shared/http-response';
+import { cleanTextSchema } from '../../shared/sanitize';
 import * as authService from './auth.service';
 
 const registerSchema = z.object({
   email: z.string().email('Email no válido'),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
-  username: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').optional(),
+  username: cleanTextSchema({
+    requiredMessage: 'El nombre debe tener al menos 2 caracteres',
+    min: 2,
+    max: 100,
+    minMessage: 'El nombre debe tener al menos 2 caracteres',
+    maxMessage: 'El nombre no puede superar los 100 caracteres',
+  }).optional(),
 });
 
 const loginSchema = z.object({
   email: z.string().email('Email no válido'),
   password: z.string().min(1, 'La contraseña es requerida'),
+});
+
+const profileSchema = z.object({
+  username: cleanTextSchema({
+    requiredMessage: 'Username es requerido',
+    min: 1,
+    max: 100,
+    minMessage: 'Username es requerido',
+    maxMessage: 'Username no puede superar los 100 caracteres',
+  }),
+  avatar_url: z.string().nullable().optional(),
 });
 
 export async function register(req: Request, res: Response): Promise<void> {
@@ -75,10 +93,17 @@ export async function me(req: Request, res: Response): Promise<void> {
 
 export async function updateProfile(req: Request, res: Response): Promise<void> {
   try {
+    const parsed = profileSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      sendError(res, 400, parsed.error.errors[0].message);
+      return;
+    }
+
     const user = (req as AuthRequest).user!;
     const updated = await authService.updateProfile(user.id, {
-      username: req.body.username,
-      avatarUrl: req.body.avatar_url,
+      username: parsed.data.username,
+      avatarUrl: parsed.data.avatar_url,
     });
 
     res.json({ user: updated });
