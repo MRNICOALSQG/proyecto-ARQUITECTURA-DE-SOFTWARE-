@@ -1,61 +1,71 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
+import { z } from 'zod';
 import { AuthRequest } from '../../middleware/auth';
-import { sendControllerError } from '../../shared/http-response';
 import * as favoritesService from './favorites.service';
 
-export async function listFavorites(req: Request, res: Response): Promise<void> {
+const songParamsSchema = z.object({
+  songId: z.string().uuid('Identificador de canción inválido'),
+});
+
+export async function listFavorites(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
     const user = (req as AuthRequest).user!;
     const songs = await favoritesService.listFavoriteSongs(user.id);
 
     res.json({ songs });
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al obtener favoritos',
-      logLabel: 'List favorites error:',
-    });
+    next(error);
   }
 }
 
-export async function checkFavorite(req: Request, res: Response): Promise<void> {
+export async function checkFavorite(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
     const user = (req as AuthRequest).user!;
-    const isFavorite = await favoritesService.checkFavorite(user.id, req.params.songId);
+    const { songId } = songParamsSchema.parse(req.params);
+    const isFavorite = await favoritesService.checkFavorite(user.id, songId);
 
     res.json({ isFavorite });
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al verificar favorito',
-    });
+    next(error);
   }
 }
 
-export async function addFavorite(req: Request, res: Response): Promise<void> {
+export async function addFavorite(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
     const user = (req as AuthRequest).user!;
-    await favoritesService.addFavorite(user.id, req.params.songId);
+    const { songId } = songParamsSchema.parse(req.params);
+    await favoritesService.addFavorite(user.id, songId);
 
     res.status(201).json({ success: true });
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al agregar a favoritos',
-    });
+    next(error);
   }
 }
 
-export async function removeFavorite(req: Request, res: Response): Promise<void> {
+export async function removeFavorite(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
     const user = (req as AuthRequest).user!;
-    await favoritesService.removeFavorite(user.id, req.params.songId);
+    const { songId } = songParamsSchema.parse(req.params);
+    await favoritesService.removeFavorite(user.id, songId);
 
     res.json({ success: true });
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al quitar de favoritos',
-    });
+    next(error);
   }
 }

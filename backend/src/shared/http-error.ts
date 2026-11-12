@@ -14,3 +14,11 @@ export class HttpError extends Error {
     this.status = status;
   }
 }
+
+/** Error de dominio para recursos inexistentes. El middleware lo traduce a 404. */
+export class NoEncontrado extends HttpError {
+  constructor(message: string) {
+    super(404, message);
+    this.name = 'NoEncontrado';
+  }
+}

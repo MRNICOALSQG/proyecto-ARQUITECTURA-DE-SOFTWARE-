@@ -1,7 +1,6 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { AuthRequest } from '../../middleware/auth';
-import { sendControllerError, sendError } from '../../shared/http-response';
 import { cleanTextSchema } from '../../shared/sanitize';
 import * as authService from './auth.service';
 
@@ -33,45 +32,29 @@ const profileSchema = z.object({
   avatar_url: z.string().nullable().optional(),
 });
 
-export async function register(req: Request, res: Response): Promise<void> {
+export async function register(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
-    const parsed = registerSchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      sendError(res, 400, parsed.error.errors[0].message);
-      return;
-    }
-
-    const result = await authService.register(parsed.data);
+    const input = registerSchema.parse(req.body);
+    const result = await authService.register(input);
 
     res.status(201).json(result);
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error interno del servidor',
-      logLabel: 'Register error:',
-    });
+    next(error);
   }
 }
 
-export async function login(req: Request, res: Response): Promise<void> {
+export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const parsed = loginSchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      sendError(res, 400, parsed.error.errors[0].message);
-      return;
-    }
-
-    const result = await authService.login(parsed.data);
+    const input = loginSchema.parse(req.body);
+    const result = await authService.login(input);
 
     res.json(result);
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error interno del servidor',
-      logLabel: 'Login error:',
-    });
+    next(error);
   }
 }
 
@@ -91,27 +74,21 @@ export async function me(req: Request, res: Response): Promise<void> {
   res.json({ user });
 }
 
-export async function updateProfile(req: Request, res: Response): Promise<void> {
+export async function updateProfile(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
-    const parsed = profileSchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      sendError(res, 400, parsed.error.errors[0].message);
-      return;
-    }
-
+    const input = profileSchema.parse(req.body);
     const user = (req as AuthRequest).user!;
     const updated = await authService.updateProfile(user.id, {
-      username: parsed.data.username,
-      avatarUrl: parsed.data.avatar_url,
+      username: input.username,
+      avatarUrl: input.avatar_url,
     });
 
     res.json({ user: updated });
   } catch (error) {
-    sendControllerError(res, error, {
-      status: 500,
-      message: 'Error al actualizar perfil',
-      logLabel: 'Update profile error:',
-    });
+    next(error);
   }
 }

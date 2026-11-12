@@ -1,5 +1,3 @@
-import multer from 'multer';
-import { NextFunction, Request, Response } from 'express';
 import { env } from '../../config/env';
 import { createUploader } from '../../shared/uploads';
 
@@ -24,25 +22,3 @@ export const uploadSongFiles = createUploader({
   maxFileSize: env.MAX_FILE_SIZE,
   invalidTypeMessage: 'Formato no compatible. Usa MP3, FLAC, OGG o WAV',
 });
-
-/** Traduce los errores de multer al contrato de error de la API. */
-export function songsUploadErrorHandler(
-  err: any,
-  _req: Request,
-  res: Response,
-  _next: NextFunction
-): void {
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      const maxFileSizeMb = Math.round(env.MAX_FILE_SIZE / (1024 * 1024));
-      res.status(400).json({ error: `El archivo excede el tamaño máximo de ${maxFileSizeMb}MB` });
-      return;
-    }
-    res.status(400).json({ error: err.message });
-    return;
-  }
-
-  if (err) {
-    res.status(400).json({ error: err.message });
-  }
-}
