@@ -73,7 +73,7 @@ jobs:
           load: true
           tags: rinne-web:${{ github.sha }}
       - name: Scan API image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: rinne-api:${{ github.sha }}
           format: table
@@ -81,7 +81,7 @@ jobs:
           severity: CRITICAL
           exit-code: '1'
       - name: Scan web image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: rinne-web:${{ github.sha }}
           format: table
@@ -114,7 +114,7 @@ jobs:
           load: true
           tags: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:${{ github.sha }}
       - name: Scan API image before publication
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:${{ github.sha }}
           format: table
@@ -122,7 +122,7 @@ jobs:
           severity: CRITICAL
           exit-code: '1'
       - name: Scan web image before publication
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:${{ github.sha }}
           format: table
