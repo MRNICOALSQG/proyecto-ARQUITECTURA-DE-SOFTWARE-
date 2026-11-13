@@ -149,6 +149,9 @@ jobs:
           output: trivy-api.sarif
           vuln-type: os,library
           severity: HIGH,CRITICAL
+          # Sin esta opcion la accion descarta `severity` y genera el SARIF con
+          # todas las severidades, haciendo que MEDIUM bloquee el gate.
+          limit-severities-for-sarif: true
           exit-code: '1'
           ignore-unfixed: false
 
@@ -160,6 +163,7 @@ jobs:
           output: trivy-web.sarif
           vuln-type: os,library
           severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
           exit-code: '1'
           ignore-unfixed: false
 
