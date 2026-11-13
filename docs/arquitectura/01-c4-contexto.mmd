@@ -1,0 +1,21 @@
+C4Context
+  title Rin'ne - Diagrama de contexto (C4 nivel 1)
+
+  Person(visitante, "Visitante", "Persona sin sesion que crea una cuenta o inicia sesion en la plataforma.")
+  Person(usuario, "Usuario registrado", "Persona autenticada que escucha musica y gestiona su biblioteca, playlists, favoritos y preferencias visuales.")
+
+  System(rinne, "Rin'ne", "Plataforma de streaming musical con biblioteca personal, playlists, favoritos y personalizacion de la interfaz.")
+
+  System_Ext(github, "GitHub", "Repositorio del codigo fuente y GitHub Actions, que ejecuta pruebas, builds, escaneo de seguridad y publicacion de imagenes.")
+  System_Ext(ghcr, "GitHub Container Registry (GHCR)", "Registro de imagenes de contenedor de la API y del frontend publicadas por el pipeline.")
+  System_Ext(dockerhub, "Docker Hub", "Origen de las imagenes base node:22-alpine, nginx:alpine y postgres:15-alpine.")
+  System_Ext(trivy, "Base de datos de vulnerabilidades de Trivy", "Fuente externa de avisos que consulta el escaneo de imagenes durante la integracion continua.")
+
+  Rel(visitante, rinne, "Se registra e inicia sesion", "HTTPS")
+  Rel(usuario, rinne, "Reproduce audio, sube canciones y gestiona playlists, favoritos y preferencias", "HTTPS")
+  Rel(github, ghcr, "Publica imagenes etiquetadas con el SHA en push a main", "HTTPS")
+  Rel(ghcr, rinne, "Provee las imagenes usadas para desplegar el stack de produccion", "docker pull")
+  Rel(dockerhub, rinne, "Provee las imagenes base para construir y ejecutar los contenedores", "docker pull")
+  Rel(github, trivy, "Descarga avisos de vulnerabilidades durante el job image-scan", "HTTPS")
+
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")

@@ -1,0 +1,168 @@
+---
+title: Rin'ne - Componentes del backend
+---
+flowchart TB
+  classDef entry fill:#0b1220,stroke:#60a5fa,color:#e5e7eb
+  classDef http fill:#0f172a,stroke:#38bdf8,color:#e5e7eb
+  classDef ctrl fill:#1e1b4b,stroke:#818cf8,color:#e5e7eb
+  classDef svc fill:#3b0764,stroke:#c084fc,color:#e5e7eb
+  classDef repo fill:#064e3b,stroke:#34d399,color:#e5e7eb
+  classDef shared fill:#422006,stroke:#fbbf24,color:#e5e7eb
+  classDef cfg fill:#450a0a,stroke:#f87171,color:#e5e7eb
+  classDef data fill:#0c4a6e,stroke:#7dd3fc,color:#e5e7eb
+  classDef note fill:#1f2937,stroke:#9ca3af,color:#e5e7eb,stroke-dasharray: 4 3
+
+  subgraph bootstrap["Arranque del proceso"]
+    server["server.ts<br/>ensureUploadDirectories<br/>waitForDatabase<br/>listen · SIGTERM"]
+  end
+
+  subgraph http["Capa HTTP - app.ts"]
+    app["createApp()<br/>Express 4"]
+    mw["Middleware global<br/>CORS · express.json<br/>express.urlencoded<br/>Passport initialize"]
+    static["express.static('/uploads')"]
+    health["GET /api/health"]
+    err["errorHandler<br/>Zod · Multer · body-parser<br/>HttpError · 500 generico"]
+  end
+
+  subgraph routers["Routers montados bajo /api"]
+    rAuth["/auth"]
+    rSongs["/songs"]
+    rPref["/preferences"]
+    rPlay["/playlists"]
+    rFav["/favorites"]
+    rUpload["/upload"]
+    authMw["authenticate<br/>Passport JWT HS256"]
+  end
+
+  subgraph controllers["Controllers - validacion Zod"]
+    cAuth["auth.controller"]
+    cSongs["songs.controller"]
+    cPref["preferences.controller"]
+    cPlay["playlists.controller"]
+    cFav["favorites.controller"]
+    cUpload["upload.routes handler"]
+  end
+
+  subgraph services["Services - reglas de negocio"]
+    sAuth["auth.service"]
+    sSongs["songs.service"]
+    sPref["preferences.service"]
+    sPlay["playlists.service"]
+    sFav["favorites.service"]
+  end
+
+  subgraph repos["Repositories - acceso a datos"]
+    repAuth["auth.repository"]
+    repSongs["songs.repository"]
+    repPref["preferences.repository"]
+    repPlay["playlists.repository"]
+    repFav["favorites.repository"]
+  end
+
+  subgraph shared["Componentes compartidos"]
+    uploads["shared/uploads<br/>createUploader · resolveUploadPath<br/>deleteUploadIfExists"]
+    sanitize["shared/sanitize<br/>sanitizeText · cleanTextSchema"]
+    httpErr["shared/http-error<br/>HttpError · NoEncontrado"]
+    httpRes["shared/http-response<br/>sendError"]
+    logger["shared/logger<br/>logServerError"]
+  end
+
+  subgraph config["Configuracion"]
+    env["config/env<br/>validacion con Zod"]
+    pool["config/database<br/>pg Pool"]
+    passport["config/passport<br/>JwtStrategy HS256"]
+  end
+
+  subgraph migrations["Migraciones versionadas"]
+    migCli["migrations/cli"]
+    migRunner["migrations/runner<br/>advisory lock · checksums<br/>baseline"]
+    migFiles["migrations/files + schema"]
+    migSql[("database/migrations/*.sql")]
+  end
+
+  pg[("PostgreSQL 15")]
+  disk[("UPLOAD_DIR<br/>songs/ · covers/ · images/")]
+
+  server --> app
+  server --> pool
+  server --> uploads
+  app --> mw
+  app --> static
+  app --> health
+  app --> routers
+  app --> err
+
+  routers -->|"rutas protegidas"| authMw
+  authNote["authenticate se aplica a todas las rutas<br/>salvo POST /auth/register y POST /auth/login"]
+  authMw -.- authNote
+  rAuth --> cAuth
+  rSongs --> cSongs
+  rPref --> cPref
+  rPlay --> cPlay
+  rFav --> cFav
+  rUpload --> cUpload
+  cSongs --> uploads
+  cUpload --> uploads
+
+  cAuth --> sAuth
+  cSongs --> sSongs
+  cPref --> sPref
+  cPlay --> sPlay
+  cFav --> sFav
+
+  sAuth --> repAuth
+  sSongs --> repSongs
+  sPref --> repPref
+  sPlay --> repPlay
+  sFav --> repFav
+
+  repAuth --> pool
+  repSongs --> pool
+  repPref --> pool
+  repPlay --> pool
+  repFav --> pool
+  health --> pool
+  pool --> pg
+
+  static --> disk
+  uploads --> disk
+  cSongs -->|"createReadStream / pipeline (Range)"| disk
+  sSongs -->|"stat del archivo"| disk
+
+  sAuth --> authMw
+  sAuth --> sanitize
+  sSongs --> sanitize
+  sSongs --> httpErr
+  sPlay --> sanitize
+  sPlay --> httpErr
+  sFav --> httpErr
+  cAuth --> sanitize
+  cSongs --> sanitize
+  cPlay --> sanitize
+  cSongs --> httpRes
+  controllers -.->|"next(error)"| err
+  err --> logger
+  err --> httpErr
+  err --> uploads
+
+  env --> pool
+  env --> passport
+  passport --> pool
+  authMw --> passport
+
+  migCli --> migRunner
+  migRunner --> migFiles
+  migFiles --> migSql
+  migRunner --> pool
+
+  class server entry
+  class app,mw,static,health,err http
+  class rAuth,rSongs,rPref,rPlay,rFav,rUpload,authMw ctrl
+  class cAuth,cSongs,cPref,cPlay,cFav,cUpload ctrl
+  class sAuth,sSongs,sPref,sPlay,sFav svc
+  class repAuth,repSongs,repPref,repPlay,repFav repo
+  class uploads,sanitize,httpErr,httpRes,logger shared
+  class env,pool,passport cfg
+  class migCli,migRunner,migFiles,migSql cfg
+  class pg,disk data
+  class authNote note

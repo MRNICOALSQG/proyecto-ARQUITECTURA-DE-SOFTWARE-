@@ -1,0 +1,59 @@
+---
+title: Rin'ne - Diagrama de despliegue (Docker Compose)
+---
+flowchart TB
+  classDef ext fill:#111827,stroke:#f59e0b,color:#fde68a
+  classDef svc fill:#0f172a,stroke:#38bdf8,color:#e2e8f0
+  classDef vol fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef mode fill:#172554,stroke:#60a5fa,color:#dbeafe
+  classDef legacy fill:#27272a,stroke:#a1a1aa,color:#e4e4e7
+
+  user["Navegador del usuario<br/>http://localhost:8080"]
+
+  subgraph host["Host Docker - Docker Engine + Compose v2"]
+    subgraph net["Red interna del proyecto Compose rinne (bridge)"]
+      web["web<br/>nginx:alpine · Nginx :80<br/>SPA compilada + proxy /api y /uploads<br/>resolver 127.0.0.11 · healthcheck wget /<br/>restart: unless-stopped"]
+      api["api<br/>node:22-alpine · Express :3001<br/>usuario node · healthcheck /api/health<br/>FRONTEND_URL para CORS<br/>restart: unless-stopped"]
+      migrate["migrate<br/>misma imagen que api<br/>one-shot: node dist/migrations/cli.js<br/>restart: no"]
+      db["db<br/>postgres:15-alpine · :5432<br/>healthcheck pg_isready<br/>valida DB_PASSWORD URL-safe<br/>restart: unless-stopped"]
+    end
+    volPg[("Volumen pgdata<br/>/var/lib/postgresql/data")]
+    volUp[("Volumen uploads<br/>/data/uploads")]
+    migDir["database/migrations<br/>montado read-only en migrate"]
+  end
+
+  user -->|"TCP 8080 a 80"| web
+  web -->|"proxy_pass http://api:3001"| api
+  api -->|"DATABASE_URL @db:5432"| db
+  api -->|"UPLOAD_DIR"| volUp
+  db --> volPg
+  migrate -->|"aplica migraciones"| db
+  migrate --> migDir
+
+  web -.->|"depends_on: service_healthy"| api
+  api -.->|"depends_on: service_healthy"| db
+  api -.->|"depends_on: service_completed_successfully"| migrate
+  migrate -.->|"depends_on: service_healthy"| db
+
+  subgraph modes["Diferencias de configuracion"]
+    local["compose.yml - local/staging<br/>build: ./backend y ./frontend<br/>APP_VERSION=local<br/>sin logging explicito"]
+    prod["compose.prod.yml - produccion<br/>image: ghcr.io/...--api y ...--web<br/>TAG obligatoria<br/>logging json-file 10m x 3"]
+  end
+
+  ghcr["GHCR<br/>imagenes API y web"]
+  prod -.->|"docker compose -f compose.prod.yml pull"| ghcr
+  prod -.->|"docker compose -f compose.prod.yml up -d"| net
+
+  subgraph legacy["Stack historico opcional - database/docker-compose.yml"]
+    legacyDb["rinne-postgres<br/>postgres:15-alpine<br/>host 5433 a 5432"]
+    legacyVol[("Volumen rinne_pgdata")]
+    legacyInit["database/init.sql<br/>init historico"]
+    legacyInit --> legacyDb
+    legacyDb --> legacyVol
+  end
+
+  class user,ghcr ext
+  class web,api,migrate,db svc
+  class volPg,volUp,legacyVol vol
+  class local,prod,migDir mode
+  class legacyDb,legacyInit legacy
