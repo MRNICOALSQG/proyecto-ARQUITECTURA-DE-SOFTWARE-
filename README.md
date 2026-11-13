@@ -250,8 +250,8 @@ Ajusta credenciales y nombres de contenedor a tu entorno:
 localmente:
 
 ```text
-ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:${TAG}
-ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--web:${TAG}
+ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:${TAG}
+ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--web:${TAG}
 ```
 
 Los nombres de GHCR deben ir en minusculas. El repositorio termina en guion, por
@@ -288,22 +288,24 @@ imagen construida desde un commit que incluya `dist/migrations/cli.js` (Cambio
 10). Una imagen publicada antes de ese cambio no contiene el runner y el
 servicio `migrate` fallara con un mensaje explicito; la API no arrancara.
 
-Mientras el pipeline del Cambio 14 no exista, construye y publica la imagen
-manualmente desde el commit desplegado:
+El pipeline de GitHub Actions construye y publica ambas imágenes en GHCR para cada commit de `main`, usando el SHA completo como etiqueta.
+Los Pull Requests ejecutan pruebas, lint, builds y escaneo Trivy, pero no publican.
+
+Para publicar manualmente una versión, usa el SHA del commit desplegado:
 
 ```bash
 TAG=v1.0.0
 
 # El Dockerfile falla si dist/migrations/cli.js no quedo en la imagen.
 docker build --build-arg APP_VERSION="$TAG" \
-  -t ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:"$TAG" ./backend
+  -t ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:"$TAG" ./backend
 
 # Verificacion explicita antes de publicar.
 docker run --rm --entrypoint sh \
-  ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:"$TAG" \
+  ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:"$TAG" \
   -c 'test -f dist/migrations/cli.js'
 
-docker push ghcr.io/mrnicolasqg/proyecto-arquitectura-de-software--api:"$TAG"
+docker push ghcr.io/mrnicoalsqg/proyecto-arquitectura-de-software--api:"$TAG"
 ```
 
 Publica tambien la imagen web con el mismo `TAG` mediante el procedimiento
@@ -313,10 +315,7 @@ reutilices un `TAG` anterior al Cambio 10 para el servicio `migrate`.
 No uses `TAG=latest` en produccion: la etiqueta debe identificar la version que
 el pipeline publico para ese despliegue.
 
-El pipeline de GitHub Actions (Cambio 14, pendiente) sera el encargado de
-publicar esas imagenes en GHCR con la etiqueta correspondiente. Cuando se
-incorpore, debe construir la imagen de la API desde el mismo commit que compila
-`dist/migrations/cli.js` y publicarla antes de actualizar `compose.prod.yml`.
+El workflow `.github/workflows/ci-cd.yml` publica imágenes etiquetadas con el SHA completo únicamente en `push` a `main`. Las ejecuciones de Pull Request no publican imágenes y nunca despliegan en AWS.
 
 ## Desarrollo sin Docker
 
@@ -406,10 +405,14 @@ de Compose esa funcion la cumple Nginx, que reenvia ambas rutas a `api:3001`.
 ### Backend
 
 ```bash
-pnpm dev      # ts-node-dev con recarga automatica
-pnpm build    # compila TypeScript a dist/
-pnpm start    # ejecuta dist/server.js
-pnpm migrate  # aplica las migraciones pendientes con backend/.env
+pnpm dev         # ts-node-dev con recarga automatica
+pnpm typecheck   # tsc --noEmit (sin emitir archivos)
+pnpm build       # compila TypeScript a dist/ con declaraciones
+pnpm start       # ejecuta dist/server.js
+pnpm migrate     # aplica las migraciones pendientes con backend/.env
+pnpm test        # compila y ejecuta toda la suite disponible
+pnpm test:unit   # solo pruebas unitarias (no requiere PostgreSQL)
+pnpm test:coverage # suite completa con cobertura y umbrales
 ```
 
 ### Frontend
@@ -423,17 +426,54 @@ pnpm preview  # sirve el build de produccion
 
 ### Pruebas y verificaciones
 
-No existe una suite de pruebas automatizadas en el repositorio. Las
-verificaciones disponibles son:
+El backend usa `node:test` y `tsc`, sin dependencias adicionales. Hay dos modos:
+
+- **Sin `TEST_DATABASE_URL`**: se ejecutan solo las pruebas unitarias. Las
+  pruebas de integración aparecen como omitidas con el motivo explícito
+  `TEST_DATABASE_URL no definida: se omite la suite de integración PostgreSQL`.
+  Este modo sirve para trabajar sin base de datos, pero no valida HTTP ni SQL.
+- **Con `TEST_DATABASE_URL`**: se ejecuta la suite completa, incluidas las
+  pruebas HTTP contra PostgreSQL real (auth, canciones, playlists, favoritos,
+  preferencias, perfil, uploads y streaming).
+
+La URL debe apuntar a una base **desechable**: el nombre tiene que terminar
+exactamente en `_test` o `_ci` y el host debe ser local o un servicio de pruebas
+conocido (`127.0.0.1`, `localhost`, `::1`, `postgres`, `db`). El guard rechaza
+`rinne`, `rinne_prod`, `rinne_produccion`, `production`, `postgres` y cualquier
+host remoto **antes** de ejecutar migraciones o `TRUNCATE`.
 
 ```bash
-# Backend: typecheck (la etapa `test` del Dockerfile ejecuta este comando)
+# Backend sin PostgreSQL: solo unitarias (integración omitida y visible)
 cd backend
-pnpm exec tsc --noEmit --declaration false --declarationMap false
+pnpm test:unit
 
-# Frontend: empaquetado de produccion
+# Backend con PostgreSQL desechable: suite completa
+# El nombre de la base debe terminar en _test o _ci.
+export TEST_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/rinne_test_ci'
+pnpm test
+
+# Cobertura reproducible (líneas 65%, ramas 65%, funciones 60%)
+pnpm test:coverage
+```
+
+En CI, `REQUIRE_INTEGRATION=1` convierte la falta de PostgreSQL en un fallo: el
+pipeline no puede pasar omitiendo en silencio la integración. Las pruebas crean
+un directorio temporal `rinne-tests-uploads-*`, barren directorios huérfanos de
+ejecuciones anteriores y lo eliminan al terminar, incluso si una prueba falla.
+
+El workflow ejecuta además el typecheck y el build canónico del backend (con
+declaraciones), ESLint y el build del frontend, y construye y escanea ambas
+imágenes con Trivy (`HIGH,CRITICAL`). Los reportes SARIF se publican en GitHub
+Security cuando el token tiene `security-events: write`; en PRs desde forks la
+carga se omite, pero el escaneo sigue bloqueando con `exit-code: 1`.
+
+Localmente, desde cada subproyecto:
+
+```bash
+# Frontend: lint y build de producción
 cd frontend
-pnpm exec vite build
+pnpm lint
+pnpm build
 ```
 
 Para validar las imagenes y el stack:
@@ -605,16 +645,16 @@ las 7 tablas, indices, relaciones, trigger y la extension.
 
 ## Estado conocido de las comprobaciones
 
-Los siguientes fallos son preexistentes y no estan relacionados con la
-organizacion de dependencias ni con Docker Compose:
+El backend se valida con sus pruebas unitarias y de integración en una base
+PostgreSQL desechable. El build canónico (`pnpm build`) emite declaraciones y
+debe completar sin errores; ya no se desactivan `declaration` ni `declarationMap`
+para ocultar errores. El frontend debe pasar ESLint, TypeScript y el build de
+Vite.
 
-- `frontend`: `pnpm build` falla en `tsc -b` por cinco variables e imports sin
-  usar en `Favorites.tsx` y `Player.tsx` (TS6133). El empaquetado puede validarse
-  con `pnpm exec vite build`.
-- `backend`: `pnpm build` falla con seis errores TS2742 porque
-  `declaration: true` no puede resolver tipos de Express bajo pnpm. La
-  compilacion puede validarse con
-  `pnpm exec tsc --declaration false --declarationMap false`.
+El workflow de GitHub Actions aplica `concurrency` para cancelar ejecuciones
+duplicadas, `timeout-minutes` por job, caché de pnpm, acciones de terceros
+fijadas por SHA completo y permisos mínimos. Solo `main` publica en GHCR; los
+PRs construyen y escanean imágenes, pero no publican ni despliegan.
 
 ## Seguridad
 

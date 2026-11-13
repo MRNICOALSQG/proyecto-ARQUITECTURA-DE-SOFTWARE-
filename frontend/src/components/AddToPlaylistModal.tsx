@@ -9,8 +9,14 @@ interface AddToPlaylistModalProps {
   song: Song | null;
 }
 
+interface Playlist {
+  id: string;
+  name: string;
+  cover_url?: string | null;
+}
+
 export function AddToPlaylistModal({ isOpen, onClose, song }: AddToPlaylistModalProps) {
-  const [playlists, setPlaylists] = useState<any[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

@@ -24,16 +24,6 @@ export function Library({ libraryOpen, setLibraryOpen }: LibraryProps) {
 
   const { playSong, setQueue, currentIndex } = usePlayerStore();
 
-  const fetchFavorites = async () => {
-    try {
-      const res = await api.get('/favorites');
-      const ids = new Set<string>(res.data.songs.map((s: Song) => s.id));
-      setFavoriteIds(ids);
-    } catch (err) {
-      console.error('Error fetching favorites:', err);
-    }
-  };
-
   const fetchSongs = async () => {
     try {
       const res = await api.get(`/songs?search=${search}`);
@@ -45,11 +35,36 @@ export function Library({ libraryOpen, setLibraryOpen }: LibraryProps) {
   };
 
   useEffect(() => {
-    fetchSongs();
-  }, [search]);
+    let active = true;
+    api.get(`/songs?search=${search}`)
+      .then(res => {
+        if (!active) return;
+        setSongs(res.data.songs);
+        setQueue(res.data.songs);
+      })
+      .catch(err => {
+        if (active) console.error(err);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [search, setQueue]);
 
   useEffect(() => {
-    fetchFavorites();
+    let active = true;
+    api.get('/favorites')
+      .then(res => {
+        if (active) {
+          const ids = new Set<string>(res.data.songs.map((song: Song) => song.id));
+          setFavoriteIds(ids);
+        }
+      })
+      .catch(err => console.error('Error fetching favorites:', err));
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const toggleFavorite = async (e: React.MouseEvent, songId: string) => {
@@ -89,7 +104,7 @@ export function Library({ libraryOpen, setLibraryOpen }: LibraryProps) {
   };
 
   const sortedSongs = useMemo(() => {
-    let sorted = [...songs];
+    const sorted = [...songs];
     if (sortBy === 'title') {
       sorted.sort((a, b) => a.title.localeCompare(b.title));
     } else if (sortBy === 'duration') {
@@ -218,6 +233,7 @@ export function Library({ libraryOpen, setLibraryOpen }: LibraryProps) {
       />
 
       <EditSongModal 
+        key={songToEdit?.id ?? 'closed'}
         isOpen={!!songToEdit} 
         onClose={() => setSongToEdit(null)} 
         song={songToEdit} 

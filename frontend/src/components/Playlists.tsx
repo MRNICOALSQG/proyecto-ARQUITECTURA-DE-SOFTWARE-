@@ -36,7 +36,16 @@ export function Playlists({ libraryOpen }: PlaylistsProps) {
   };
 
   useEffect(() => {
-    fetchPlaylists();
+    let active = true;
+    api.get('/playlists')
+      .then(res => {
+        if (active) setPlaylists(res.data.playlists);
+      })
+      .catch(err => console.error(err));
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const editPlaylist = (e: React.MouseEvent, playlist: Playlist) => {
@@ -254,6 +263,7 @@ export function Playlists({ libraryOpen }: PlaylistsProps) {
       />
 
       <EditPlaylistModal
+        key={playlistToEdit?.id ?? 'closed'}
         isOpen={!!playlistToEdit}
         onClose={() => setPlaylistToEdit(null)}
         playlist={playlistToEdit}

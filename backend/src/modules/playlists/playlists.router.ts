@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/auth';
 import * as playlistsController from './playlists.controller';
 
-const router = Router();
+const router: Router = Router();
 
 router.get('/', authenticate, playlistsController.listPlaylists);
 router.post('/', authenticate, playlistsController.createPlaylist);

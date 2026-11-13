@@ -14,15 +14,14 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-lock.yaml tsconfig.json ./
 COPY src ./src
-# The repository has pre-existing TS2742 errors caused by declaration: true.
-# Declaration output is not needed at runtime, so it is disabled for the image.
-RUN pnpm build --declaration false --declarationMap false
+# Canonical build: TypeScript emits declarations and must pass without flags
+# that hide errors (the former TS2742 workaround has been fixed).
+RUN pnpm build
 
-# ---- test: run the verification available in the repository ----
-# backend/package.json has no test script. The available check is the TypeScript
-# type check, using the same declaration override as the build stage.
+# ---- test: lightweight production-source type check ----
+# Full unit and PostgreSQL integration tests run in GitHub Actions.
 FROM build AS test
-RUN pnpm exec tsc --noEmit --declaration false --declarationMap false
+RUN pnpm exec tsc --noEmit
 
 # ---- prod-deps: production dependencies only ----
 FROM node:22-alpine AS prod-deps
@@ -49,6 +48,11 @@ RUN test -f /app/dist/migrations/cli.js
 
 # Uploads live outside the application tree and must be writable by `node`.
 RUN mkdir -p /data/uploads && chown -R node:node /data/uploads
+
+# El runtime solo ejecuta `node dist/server.js`: npm/npx no se usan y su copia
+# incluida en la imagen base arrastra vulnerabilidades HIGH/CRITICAL que Trivy
+# bloquea. Se eliminan para reducir superficie de ataque y mantener el gate.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 USER node
 EXPOSE 3001

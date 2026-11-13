@@ -7,8 +7,20 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",
-    "migrate": "tsc --declaration false --declarationMap false && node dist/migrations/cli.js"
+    "migrate": "tsc --declaration false --declarationMap false && node dist/migrations/cli.js",
+    "test": "npm run test:build && node --test --test-concurrency=1 .test-dist/tests/**/*.test.js",
+    "test:build": "node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
+    "test:unit": "npm run test:build && node --test --test-concurrency=1 .test-dist/tests/unit/**/*.test.js",
+    "test:integration": "npm run test:build && node --test --test-concurrency=1 .test-dist/tests/integration/**/*.test.js",
+    "test:coverage": "npm run test:build && node --test --test-concurrency=1 --experimental-test-coverage \"--test-coverage-include=.test-dist/src/**/*.js\" \"--test-coverage-exclude=.test-dist/tests/**\" --test-coverage-lines=65 --test-coverage-branches=65 --test-coverage-functions=60 .test-dist/tests/**/*.test.js"
+  },
+  "pnpm": {
+    "overrides": {
+      "proxy-addr": "2.0.8",
+      "body-parser": "1.20.9"
+    }
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -16,7 +28,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.1.0",
+    "multer": "^2.5.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.13.0",

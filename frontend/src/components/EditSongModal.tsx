@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Image as ImageIcon } from 'lucide-react';
 import { api, getImageUrl } from '../api/client';
 import type { Song } from '../stores/playerStore';
@@ -11,17 +11,10 @@ interface EditSongModalProps {
 }
 
 export function EditSongModal({ isOpen, onClose, song, onSuccess }: EditSongModalProps) {
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(song?.title ?? '');
   const [coverFile, setCoverFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(song?.cover_path ?? null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (song) {
-      setTitle(song.title);
-      setPreviewUrl(song.cover_path || null);
-    }
-  }, [song]);
 
   if (!isOpen || !song) return null;
 

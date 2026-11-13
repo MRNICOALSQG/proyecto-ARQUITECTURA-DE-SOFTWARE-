@@ -3,7 +3,7 @@ import { createUploader } from '../shared/uploads';
 import { HttpError } from '../shared/http-error';
 import { authenticate } from '../middleware/auth';
 
-const router = Router();
+const router: Router = Router();
 
 const upload = createUploader({
   folder: 'images',

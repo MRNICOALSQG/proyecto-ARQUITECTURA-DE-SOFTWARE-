@@ -7,13 +7,14 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
-# `pnpm build` currently stops at the pre-existing tsc -b step (TS6133 unused
-# symbols in Favorites.tsx and Player.tsx). The documented Vite bundling step
-# produces the same dist/ consumed by Nginx, without changing application code.
-RUN pnpm exec vite build
+# Canonical build: `tsc -b` type-checks the SPA and Vite emits dist/ for Nginx.
+RUN pnpm build
 
 # ---- prod: static SPA served by Nginx ----
 FROM nginx:alpine AS prod
+# nginx:alpine incluye libxslt 1.1.43-r3, con tres CVE HIGH corregidos en
+# 1.1.43-r4. Se actualiza el paquete para que el gate Trivy HIGH/CRITICAL pase.
+RUN apk upgrade --no-cache libxslt
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
