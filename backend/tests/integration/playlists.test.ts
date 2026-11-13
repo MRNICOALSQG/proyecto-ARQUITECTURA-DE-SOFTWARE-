@@ -3,8 +3,15 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import { createApp } from '../../src/app';
-import { integrationEnabled } from '../helpers/env';
-import { closeDatabase, createPlaylist, createSong, createUser, prepareDatabase } from '../helpers/db';
+import { integrationSkipReason } from '../helpers/env';
+import {
+  closeDatabase,
+  countRows,
+  createPlaylist,
+  createSong,
+  createUser,
+  prepareDatabase,
+} from '../helpers/db';
 import { requestJson } from '../helpers/api';
 import { startTestServer, type TestServer } from '../helpers/server';
 
@@ -23,7 +30,17 @@ interface PlaylistListResponse {
   playlists: PlaylistView[];
 }
 
-describe('playlists (PostgreSQL real)', { skip: !integrationEnabled }, () => {
+interface PlaylistSongView {
+  id: string;
+  user_id: string;
+  title: string;
+}
+
+interface PlaylistSongListResponse {
+  songs: PlaylistSongView[];
+}
+
+describe('playlists (PostgreSQL real)', { skip: integrationSkipReason() }, () => {
   let server: TestServer;
 
   before(async () => {
@@ -180,5 +197,127 @@ describe('playlists (PostgreSQL real)', { skip: !integrationEnabled }, () => {
       { token: other.token }
     );
     assert.deepEqual(otherList.body.playlists, []);
+  });
+
+  it('agrega una cancion propia a una playlist (camino feliz)', async () => {
+    const user = await createUser();
+    const playlist = await createPlaylist(user.id, 'Favorites Mix');
+    const song = await createSong(user.id, { title: 'Added Song' });
+
+    const added = await requestJson<{ success: boolean }>(
+      server.baseUrl,
+      `/api/playlists/${playlist.id}/songs`,
+      { method: 'POST', token: user.token, body: { song_id: song.id } }
+    );
+
+    assert.equal(added.status, 201);
+    assert.equal(added.body.success, true);
+    assert.equal(
+      await countRows('playlist_songs', 'playlist_id = $1 AND song_id = $2', [
+        playlist.id,
+        song.id,
+      ]),
+      1
+    );
+
+    const listed = await requestJson<PlaylistSongListResponse>(
+      server.baseUrl,
+      `/api/playlists/${playlist.id}/songs`,
+      { token: user.token }
+    );
+
+    assert.equal(listed.status, 200);
+    assert.deepEqual(
+      listed.body.songs.map((item) => item.id),
+      [song.id]
+    );
+    assert.equal(listed.body.songs[0].title, 'Added Song');
+  });
+
+  it('es idempotente al agregar dos veces la misma cancion', async () => {
+    const user = await createUser();
+    const playlist = await createPlaylist(user.id, 'No Duplicates');
+    const song = await createSong(user.id);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await requestJson(server.baseUrl, `/api/playlists/${playlist.id}/songs`, {
+        method: 'POST',
+        token: user.token,
+        body: { song_id: song.id },
+      });
+      assert.equal(result.status, 201, `intento ${attempt + 1}`);
+    }
+
+    assert.equal(
+      await countRows('playlist_songs', 'playlist_id = $1 AND song_id = $2', [
+        playlist.id,
+        song.id,
+      ]),
+      1
+    );
+  });
+
+  it('quita una cancion de la playlist sin borrar la cancion', async () => {
+    const user = await createUser();
+    const playlist = await createPlaylist(user.id, 'Remove Song');
+    const song = await createSong(user.id);
+
+    await requestJson(server.baseUrl, `/api/playlists/${playlist.id}/songs`, {
+      method: 'POST',
+      token: user.token,
+      body: { song_id: song.id },
+    });
+
+    const removed = await requestJson<{ success: boolean }>(
+      server.baseUrl,
+      `/api/playlists/${playlist.id}/songs/${song.id}`,
+      { method: 'DELETE', token: user.token }
+    );
+
+    assert.equal(removed.status, 200);
+    assert.equal(removed.body.success, true);
+    assert.equal(
+      await countRows('playlist_songs', 'playlist_id = $1 AND song_id = $2', [
+        playlist.id,
+        song.id,
+      ]),
+      0
+    );
+    assert.equal(await countRows('songs', 'id = $1', [song.id]), 1);
+  });
+
+  it('rechaza con 403 agregar una cancion de otro usuario', async () => {
+    const owner = await createUser();
+    const other = await createUser();
+    const playlist = await createPlaylist(owner.id, 'Owner Only');
+    const foreignSong = await createSong(other.id);
+
+    const result = await requestJson(server.baseUrl, `/api/playlists/${playlist.id}/songs`, {
+      method: 'POST',
+      token: owner.token,
+      body: { song_id: foreignSong.id },
+    });
+
+    assert.equal(result.status, 403);
+    assert.equal(
+      await countRows('playlist_songs', 'playlist_id = $1 AND song_id = $2', [
+        playlist.id,
+        foreignSong.id,
+      ]),
+      0
+    );
+  });
+
+  it('responde 404 al agregar una cancion inexistente', async () => {
+    const user = await createUser();
+    const playlist = await createPlaylist(user.id, 'Missing Song');
+
+    const result = await requestJson(server.baseUrl, `/api/playlists/${playlist.id}/songs`, {
+      method: 'POST',
+      token: user.token,
+      body: { song_id: crypto.randomUUID() },
+    });
+
+    assert.equal(result.status, 404);
   });
 });

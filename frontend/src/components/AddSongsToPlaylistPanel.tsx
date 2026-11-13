@@ -18,12 +18,23 @@ export function AddSongsToPlaylistPanel({ isOpen, onClose, playlistId, existingS
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      api.get('/songs')
-        .then(res => setAllSongs(res.data.songs))
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    }
+    if (!isOpen) return;
+
+    // Ignora la respuesta de una peticion anterior si el panel se cerro o se
+    // reabrio antes de que terminara.
+    let active = true;
+    api.get('/songs')
+      .then(res => {
+        if (active) setAllSongs(res.data.songs);
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -32,6 +43,9 @@ export function AddSongsToPlaylistPanel({ isOpen, onClose, playlistId, existingS
 
   const handleClose = () => {
     setSelectedIds(new Set());
+    // Restaura la pantalla de carga para la proxima apertura. Se hace al cerrar
+    // (y no dentro del efecto) para no provocar renders en cascada.
+    setLoading(true);
     onClose();
   };
 

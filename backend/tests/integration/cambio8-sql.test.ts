@@ -3,7 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import { pool } from '../../src/config/database';
-import { integrationEnabled } from '../helpers/env';
+import { integrationSkipReason } from '../helpers/env';
 import {
   closeDatabase,
   countRows,
@@ -15,7 +15,7 @@ import {
 import * as favoritesRepository from '../../src/modules/favorites/favorites.repository';
 import * as playlistsRepository from '../../src/modules/playlists/playlists.repository';
 
-describe('Cambio 8: consultas de propiedad (PostgreSQL real)', { skip: !integrationEnabled }, () => {
+describe('Cambio 8: consultas de propiedad (PostgreSQL real)', { skip: integrationSkipReason() }, () => {
   before(async () => {
     await prepareDatabase();
   });

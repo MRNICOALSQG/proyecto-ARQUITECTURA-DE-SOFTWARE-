@@ -6,13 +6,13 @@ import fs from 'fs';
 import path from 'path';
 import { PassThrough } from 'node:stream';
 import { createApp } from '../../src/app';
-import { integrationEnabled, uploadDirPath } from '../helpers/env';
+import { integrationSkipReason, uploadDirPath } from '../helpers/env';
 import { closeDatabase, createSong, createUser, prepareDatabase, type TestUser } from '../helpers/db';
 import { startTestServer, type TestServer } from '../helpers/server';
 
 const audioBytes = Buffer.from('Hello Rinne');
 
-describe('streaming de audio (PostgreSQL real)', { skip: !integrationEnabled }, () => {
+describe('streaming de audio (PostgreSQL real)', { skip: integrationSkipReason() }, () => {
   let server: TestServer;
   let user: TestUser;
   let songId: string;

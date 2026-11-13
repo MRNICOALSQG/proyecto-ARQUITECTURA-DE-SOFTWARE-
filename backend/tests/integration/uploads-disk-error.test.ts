@@ -1,4 +1,8 @@
-import { cleanupUploadDir, integrationEnabled } from '../helpers/env';
+import {
+  cleanupUploadDir,
+  integrationEnabled,
+  integrationSkipReason,
+} from '../helpers/env';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
@@ -23,7 +27,7 @@ const { startTestServer } = require('../helpers/server') as typeof import('../he
 
 describe(
   'uploads con error de disco (PostgreSQL real)',
-  { skip: !integrationEnabled },
+  { skip: integrationSkipReason() },
   () => {
     let server: import('../helpers/server').TestServer;
 

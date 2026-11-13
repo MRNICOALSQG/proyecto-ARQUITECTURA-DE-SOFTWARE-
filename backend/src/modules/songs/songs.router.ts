@@ -3,7 +3,7 @@ import { authenticate } from '../../middleware/auth';
 import * as songsController from './songs.controller';
 import { uploadSongFiles } from './songs.upload';
 
-const router = Router();
+const router: Router = Router();
 
 router.get('/', authenticate, songsController.listSongs);
 router.post(

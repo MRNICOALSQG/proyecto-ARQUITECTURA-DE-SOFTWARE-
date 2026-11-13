@@ -3,6 +3,7 @@ import { generateToken } from '../../src/middleware/auth';
 import { pool } from '../../src/config/database';
 import { resolveMigrationsDir } from '../../src/migrations/files';
 import { runMigrations } from '../../src/migrations/runner';
+import { assertDisposableDatabaseUrl } from './db-guard';
 
 export interface TestUser {
   id: string;
@@ -24,40 +25,29 @@ export interface TestPlaylist {
   name: string;
 }
 
-const SAFE_DATABASE_NAME = /(test|ci|tmp|ephemeral)/i;
-
 let prepared: Promise<void> | undefined;
 
 function testDatabaseUrl(): string {
   const url = process.env.TEST_DATABASE_URL;
 
-  if (!url) {
-    throw new Error('TEST_DATABASE_URL no esta definida.');
+  if (url === undefined || url.trim() === '') {
+    throw new Error(
+      'TEST_DATABASE_URL no esta definida. La suite de integracion requiere ' +
+        'una base PostgreSQL desechable.'
+    );
   }
 
   return url;
-}
-
-/**
- * Verifica que la URL de integracion apunte a una base desechable. Es una
- * defensa deliberada contra ejecutar migraciones o TRUNCATE sobre `rinne`.
- */
-function assertDisposableDatabase(url: string): void {
-  const databaseName = decodeURIComponent(new URL(url).pathname.replace(/^\//, ''));
-
-  if (!SAFE_DATABASE_NAME.test(databaseName)) {
-    throw new Error(
-      `TEST_DATABASE_URL debe apuntar a una base de pruebas aislada ` +
-        `(el nombre debe contener test, ci, tmp o ephemeral). Recibido: ${databaseName}`
-    );
-  }
 }
 
 export function prepareDatabase(): Promise<void> {
   if (!prepared) {
     prepared = (async () => {
       const url = testDatabaseUrl();
-      assertDisposableDatabase(url);
+
+      // Todas las validaciones ocurren antes de tocar la base de datos.
+      assertDisposableDatabaseUrl(url);
+
       await runMigrations({ migrationsDir: resolveMigrationsDir() });
       await truncateAll();
     })();

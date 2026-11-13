@@ -14,14 +14,14 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-lock.yaml tsconfig.json ./
 COPY src ./src
-# The repository has pre-existing TS2742 errors caused by declaration: true.
-# Declaration output is not needed at runtime, so it is disabled for the image.
-RUN pnpm build --declaration false --declarationMap false
+# Canonical build: TypeScript emits declarations and must pass without flags
+# that hide errors (the former TS2742 workaround has been fixed).
+RUN pnpm build
 
 # ---- test: lightweight production-source type check ----
 # Full unit and PostgreSQL integration tests run in GitHub Actions.
 FROM build AS test
-RUN pnpm exec tsc --noEmit --declaration false --declarationMap false
+RUN pnpm exec tsc --noEmit
 
 # ---- prod-deps: production dependencies only ----
 FROM node:22-alpine AS prod-deps

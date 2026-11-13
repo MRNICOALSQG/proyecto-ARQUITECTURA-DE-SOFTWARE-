@@ -3,12 +3,12 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../../src/app';
 import { pool } from '../../src/config/database';
-import { integrationEnabled } from '../helpers/env';
+import { integrationSkipReason } from '../helpers/env';
 import { closeDatabase, createUser, prepareDatabase } from '../helpers/db';
 import { requestJson } from '../helpers/api';
 import { startTestServer, type TestServer } from '../helpers/server';
 
-describe('manejo de errores (PostgreSQL real)', { skip: !integrationEnabled }, () => {
+describe('manejo de errores (PostgreSQL real)', { skip: integrationSkipReason() }, () => {
   let server: TestServer;
 
   before(async () => {

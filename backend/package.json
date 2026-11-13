@@ -7,12 +7,14 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",
     "migrate": "tsc --declaration false --declarationMap false && node dist/migrations/cli.js",
     "test": "npm run test:build && node --test --test-concurrency=1 .test-dist/tests/**/*.test.js",
     "test:build": "node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
     "test:unit": "npm run test:build && node --test --test-concurrency=1 .test-dist/tests/unit/**/*.test.js",
-    "test:integration": "npm run test:build && node --test --test-concurrency=1 .test-dist/tests/integration/**/*.test.js"
+    "test:integration": "npm run test:build && node --test --test-concurrency=1 .test-dist/tests/integration/**/*.test.js",
+    "test:coverage": "npm run test:build && node --test --test-concurrency=1 --experimental-test-coverage \"--test-coverage-include=.test-dist/src/**/*.js\" \"--test-coverage-exclude=.test-dist/tests/**\" --test-coverage-lines=65 --test-coverage-branches=65 --test-coverage-functions=60 .test-dist/tests/**/*.test.js"
   },
   "pnpm": {
     "overrides": {

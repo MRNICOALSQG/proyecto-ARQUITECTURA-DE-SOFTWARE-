@@ -3,7 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import { createApp } from '../../src/app';
-import { integrationEnabled } from '../helpers/env';
+import { integrationSkipReason } from '../helpers/env';
 import {
   closeDatabase,
   countRows,
@@ -20,7 +20,7 @@ interface SongView {
   user_id: string;
 }
 
-describe('favoritos y propiedad de canciones (PostgreSQL real)', { skip: !integrationEnabled }, () => {
+describe('favoritos y propiedad de canciones (PostgreSQL real)', { skip: integrationSkipReason() }, () => {
   let server: TestServer;
 
   before(async () => {

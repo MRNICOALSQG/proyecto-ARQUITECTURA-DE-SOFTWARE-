@@ -2,11 +2,11 @@ import '../helpers/env';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../../src/app';
-import { integrationEnabled } from '../helpers/env';
+import { integrationSkipReason } from '../helpers/env';
 import { closeDatabase, prepareDatabase } from '../helpers/db';
 import { startTestServer, type TestServer } from '../helpers/server';
 
-describe('GET /api/health (PostgreSQL real)', { skip: !integrationEnabled }, () => {
+describe('GET /api/health (PostgreSQL real)', { skip: integrationSkipReason() }, () => {
   let server: TestServer;
 
   before(async () => {

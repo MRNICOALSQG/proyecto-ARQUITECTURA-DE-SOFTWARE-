@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/auth';
 import * as favoritesController from './favorites.controller';
 
-const router = Router();
+const router: Router = Router();
 
 router.get('/', authenticate, favoritesController.listFavorites);
 router.get('/check/:songId', authenticate, favoritesController.checkFavorite);

@@ -31,20 +31,27 @@ pruebas de integración.
 Desde `backend/`:
 
 ```bash
-npm test                 # compila y ejecuta toda la suite
-npm run test:unit        # solo pruebas unitarias
+npm test                 # compila y ejecuta toda la suite disponible
+npm run test:unit        # solo pruebas unitarias (sin PostgreSQL)
 npm run test:integration # solo integración (requiere TEST_DATABASE_URL)
-npm run build            # compilación normal de producción
+npm run test:coverage    # suite completa con cobertura y umbrales
+npm run typecheck        # tsc --noEmit
+npm run build            # compilación canónica con declaraciones
 ```
 
 `npm test` siempre es ejecutable: si `TEST_DATABASE_URL` no está definida, los
-archivos de integración se marcan como omitidos y el resto se ejecuta.
+archivos de integración se marcan como omitidos con un motivo visible y el resto
+se ejecuta. Para exigir PostgreSQL (por ejemplo en CI), define
+`REQUIRE_INTEGRATION=1`: la suite falla al arrancar si falta la URL.
 
 ## Base de datos de integración
 
-`TEST_DATABASE_URL` debe apuntar a una base **desechable y aislada**. Para evitar
-errores humanos, la suite rechaza nombres de base que no contengan `test`, `ci`,
-`tmp` o `ephemeral` (por ejemplo `rinne_test_ci`).
+`TEST_DATABASE_URL` debe apuntar a una base **desechable y aislada**. El guard de
+`tests/helpers/db-guard.ts` exige que el nombre termine exactamente en `_test` o
+`_ci` y que el host sea `127.0.0.1`, `localhost`, `::1`, `postgres` o `db`.
+Rechaza explícitamente `rinne`, `rinne_prod`, `rinne_produccion`, `production`,
+`postgres`, hosts remotos y nombres que solo contengan `test`/`ci` como
+subcadena. La validación ocurre **antes** de ejecutar migraciones o `TRUNCATE`.
 
 ```bash
 # PowerShell
@@ -55,6 +62,10 @@ npm test
 Las pruebas ejecutan `runMigrations` sobre esa base y luego hacen `TRUNCATE` de
 las tablas de la aplicación. Nunca uses la base `rinne`, credenciales de
 producción ni un volumen persistente compartido.
+
+La suite crea un directorio temporal `rinne-tests-uploads-*` y lo elimina al
+terminar, incluso si una prueba falla. Al arrancar también barre directorios
+huérfanos con ese prefijo y más de una hora de antigüedad.
 
 ### PostgreSQL efímero sin Docker
 
@@ -67,8 +78,8 @@ $data = Join-Path $env:TEMP "rinne-pg-test"
 $port = 55432
 & "$pgBin\initdb.exe" -D $data -U postgres --auth=trust --encoding=UTF8
 & "$pgBin\pg_ctl.exe" -D $data -o "-p $port -c listen_addresses=127.0.0.1" -l "$data\server.log" start
-& "$pgBin\createdb.exe" -h 127.0.0.1 -p $port -U postgres rinne_test_ephemeral
-$env:TEST_DATABASE_URL = "postgresql://postgres@127.0.0.1:$port/rinne_test_ephemeral"
+& "$pgBin\createdb.exe" -h 127.0.0.1 -p $port -U postgres rinne_local_test
+$env:TEST_DATABASE_URL = "postgresql://postgres@127.0.0.1:$port/rinne_local_test"
 npm test
 & "$pgBin\pg_ctl.exe" -D $data stop
 Remove-Item -Recurse -Force $data

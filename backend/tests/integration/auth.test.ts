@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { createApp } from '../../src/app';
-import { integrationEnabled } from '../helpers/env';
+import { integrationSkipReason } from '../helpers/env';
 import { closeDatabase, prepareDatabase } from '../helpers/db';
 import { requestJson } from '../helpers/api';
 import { startTestServer, type TestServer } from '../helpers/server';
@@ -20,7 +20,7 @@ interface AuthBody {
   token: string;
 }
 
-describe('autenticacion (PostgreSQL real)', { skip: !integrationEnabled }, () => {
+describe('autenticacion (PostgreSQL real)', { skip: integrationSkipReason() }, () => {
   let server: TestServer;
 
   before(async () => {

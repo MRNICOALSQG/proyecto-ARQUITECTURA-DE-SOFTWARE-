@@ -1,4 +1,4 @@
-import { cleanupUploadDir, integrationEnabled, uploadDirPath } from '../helpers/env';
+import { cleanupUploadDir, integrationSkipReason, uploadDirPath } from '../helpers/env';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
@@ -30,7 +30,7 @@ function publicPathToDisk(publicPath: string): string {
   return path.join(uploadDirPath, ...publicPath.replace(/^\/uploads\//, '').split('/'));
 }
 
-describe('uploads (PostgreSQL real)', { skip: !integrationEnabled }, () => {
+describe('uploads (PostgreSQL real)', { skip: integrationSkipReason() }, () => {
   let server: TestServer;
   let user: TestUser;
 
