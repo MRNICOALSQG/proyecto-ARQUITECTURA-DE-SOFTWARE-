@@ -18,7 +18,8 @@
   },
   "pnpm": {
     "overrides": {
-      "proxy-addr": "2.0.8"
+      "proxy-addr": "2.0.8",
+      "body-parser": "1.20.9"
     }
   },
   "dependencies": {
@@ -27,7 +28,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.1.0",
+    "multer": "^2.5.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.13.0",

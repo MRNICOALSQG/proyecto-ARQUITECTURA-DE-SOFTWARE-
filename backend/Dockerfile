@@ -49,6 +49,11 @@ RUN test -f /app/dist/migrations/cli.js
 # Uploads live outside the application tree and must be writable by `node`.
 RUN mkdir -p /data/uploads && chown -R node:node /data/uploads
 
+# El runtime solo ejecuta `node dist/server.js`: npm/npx no se usan y su copia
+# incluida en la imagen base arrastra vulnerabilidades HIGH/CRITICAL que Trivy
+# bloquea. Se eliminan para reducir superficie de ataque y mantener el gate.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 USER node
 EXPOSE 3001
 
