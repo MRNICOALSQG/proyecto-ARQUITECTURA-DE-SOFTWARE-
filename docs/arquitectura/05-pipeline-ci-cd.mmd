@@ -1,0 +1,87 @@
+---
+title: Rin'ne - Pipeline CI/CD (GitHub Actions)
+---
+flowchart TB
+  classDef event fill:#111827,stroke:#f59e0b,color:#fde68a
+  classDef job fill:#0f172a,stroke:#38bdf8,color:#e2e8f0
+  classDef step fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
+  classDef gate fill:#3f1d1d,stroke:#f87171,color:#fecaca
+  classDef out fill:#052e16,stroke:#4ade80,color:#dcfce7
+  classDef ext fill:#27272a,stroke:#a1a1aa,color:#e4e4e7
+
+  pr["pull_request hacia main"]
+  push["push hacia main"]
+  conc["concurrency<br/>workflow + numero de PR o ref<br/>cancel-in-progress: true"]
+
+  pr --> conc
+  push --> conc
+
+  subgraph backend["Job: Backend build and tests - ubuntu-latest - 25 min"]
+    beDb["Service postgres:15-alpine<br/>rinne_test_ci<br/>healthcheck pg_isready"]
+    beSetup["Checkout · pnpm 9.15.9<br/>Node 22 · cache pnpm"]
+    beInstall["pnpm install --frozen-lockfile"]
+    beType["pnpm typecheck"]
+    beBuild["pnpm build<br/>emite declaraciones"]
+    beTest["pnpm test:coverage<br/>unitarias + integracion<br/>REQUIRE_INTEGRATION=1<br/>cobertura minima 65/65/60"]
+    beSetup --> beInstall --> beType --> beBuild --> beTest
+    beDb -.->|"TEST_DATABASE_URL"| beTest
+  end
+
+  subgraph frontend["Job: Frontend lint and build - ubuntu-latest - 15 min"]
+    feSetup["Checkout · pnpm 9.15.9<br/>Node 22 · cache pnpm"]
+    feInstall["pnpm install --frozen-lockfile"]
+    feLint["pnpm lint"]
+    feBuild["pnpm build<br/>tsc -b + vite build"]
+    feSetup --> feInstall --> feLint --> feBuild
+  end
+
+  subgraph scan["Job: Build and scan container images - needs backend y frontend - 25 min"]
+    scBuildx["docker/setup-buildx-action"]
+    scBuildApi["Build API image<br/>rinne-api:SHA"]
+    scBuildWeb["Build web image<br/>rinne-web:SHA"]
+    scTrivyApi["Trivy API<br/>HIGH,CRITICAL · exit-code 1"]
+    scTrivyWeb["Trivy web<br/>HIGH,CRITICAL · exit-code 1"]
+    scSarif["upload-sarif<br/>solo si el SARIF existe<br/>y el repositorio es el origen"]
+    scBuildx --> scBuildApi --> scTrivyApi
+    scBuildx --> scBuildWeb --> scTrivyWeb
+    scTrivyApi -.-> scSarif
+    scTrivyWeb -.-> scSarif
+  end
+
+  subgraph publish["Job: Publish images to GHCR - needs image-scan - solo push a main"]
+    puLogin["docker/login-action<br/>ghcr.io · GITHUB_TOKEN"]
+    puApi["Build y push API<br/>tags SHA y latest"]
+    puWeb["Build y push web<br/>tags SHA y latest"]
+    puLogin --> puApi
+    puLogin --> puWeb
+  end
+
+  trivyDb["Base de datos de vulnerabilidades<br/>de Trivy"] -.->|"consulta"| scTrivyApi
+  trivyDb -.->|"consulta"| scTrivyWeb
+
+  conc --> backend
+  conc --> frontend
+  backend --> scan
+  frontend --> scan
+  scan --> publish
+  publish --> ghcr["GHCR<br/>imagenes API y web<br/>SHA + latest"]
+  publish -.->|"en PR no se ejecuta"| skip["Publish omitido"]
+  backend -->|"fallo"| block["Checks requeridos en rojo<br/>merge bloqueado"]
+  frontend -->|"fallo"| block
+  scan -->|"fallo"| block
+
+  controls["Controles del workflow<br/>permisos minimos: contents read<br/>image-scan: security-events write<br/>publish: packages write<br/>acciones de terceros fijadas por SHA"]
+  controls -.-> backend
+  controls -.-> frontend
+  controls -.-> scan
+  controls -.-> publish
+
+  class pr,push,conc event
+  class backend,frontend,scan,publish job
+  class beDb,beSetup,beInstall,beType,beBuild,beTest step
+  class feSetup,feInstall,feLint,feBuild step
+  class scBuildx,scBuildApi,scBuildWeb,scTrivyApi,scTrivyWeb,scSarif step
+  class puLogin,puApi,puWeb step
+  class block,skip gate
+  class ghcr,trivyDb ext
+  class controls out

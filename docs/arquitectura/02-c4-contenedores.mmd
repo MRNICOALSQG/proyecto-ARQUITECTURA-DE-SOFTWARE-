@@ -1,0 +1,20 @@
+C4Container
+  title Rin'ne - Diagrama de contenedores (C4 nivel 2)
+
+  Person(usuario, "Usuario registrado", "Persona autenticada que usa la plataforma desde un navegador web.")
+
+  System_Boundary(rinne, "Rin'ne") {
+    Container(web, "Frontend web", "React 19, Vite, TypeScript, Tailwind CSS, Zustand, Howler y Nginx", "Sirve la SPA compilada y actua como proxy inverso de /api y /uploads.")
+    Container(api, "API REST", "Node.js 22, Express 4, TypeScript, Zod, Passport-JWT, Multer y pg", "Autenticacion, biblioteca, playlists, favoritos, preferencias, streaming de audio y gestion de uploads.")
+    Container(migrate, "Migrador de base de datos", "Node.js 22 y TypeScript, misma imagen que la API", "Aplica migraciones SQL versionadas al arrancar y termina; no atiende trafico.")
+    ContainerDb(db, "Base de datos", "PostgreSQL 15", "Usuarios, canciones, playlists, favoritos, preferencias, tokens revocados e historial de migraciones.")
+    Container(fs, "Almacenamiento de archivos", "Volumen Docker uploads montado en /data/uploads", "Audios en songs/, portadas en covers/ e imagenes en images/.")
+  }
+
+  Rel(usuario, web, "Usa la aplicacion en el puerto 8080", "HTTP/HTTPS")
+  Rel(web, api, "Reenvia /api y /uploads conservando el prefijo", "HTTP a api:3001")
+  Rel(api, db, "Consultas SQL mediante pool de conexiones pg", "TCP 5432")
+  Rel(api, fs, "Lee y escribe archivos de audio e imagenes", "Sistema de archivos")
+  Rel(migrate, db, "Aplica migraciones pendientes y registra checksums", "SQL")
+
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
